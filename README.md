@@ -16,6 +16,9 @@ Hay dos formas de usarlo:
 | **Clonar el repositorio** | Trabajar tus proyectos dentro de este kit (en este u otro computador) | [1](#1-usarlo-en-otro-computador-clonando-el-repositorio) |
 | **Instalarlo como plugin** | Tener los comandos en *cualquier* carpeta o repositorio, sin copiar nada | [2](#2-usarlo-como-plugin) |
 
+Una vez instalado, la **[guía de uso](#3-guía-de-uso-de-cero-a-un-informe)** explica paso a paso
+cómo hacer un informe.
+
 ---
 
 ## 0. Requisitos (una vez por computador)
@@ -100,18 +103,99 @@ Reinicia Claude Code. Los comandos quedan con el prefijo del plugin:
 
 ---
 
-## 3. Flujo de trabajo de un proyecto
+## 3. Guía de uso: de cero a un informe
 
-| Paso | Comando | Qué pasa |
-|---|---|---|
-| 1 | `/new-project <nombre>` | Crea `projects/<nombre>/`; dejas el diseño en `intake/` y los datos en `data/`; Claude deduce tema, modelo y spec y te hace **una** ronda de preguntas |
-| 2 | `/build-mockup <nombre>` | Mockup HTML para aprobar |
-| 3 | *(tú)* | Power BI Desktop → *Guardar como → Power BI Project (.pbip)* en `projects/<nombre>/` |
-| 4 | `/build-pbi <nombre>` | Modelo + páginas, validación y capturas |
-| 5 | `/build-html <nombre>` | HTML interactivo con los datos reales (mismos números que Power BI) |
-| — | `/status <nombre>` | Estado, bloqueos y siguiente paso |
+Todo se hace escribiendo en el chat de Claude Code (con el kit clonado: `/comando`; como plugin:
+`/powerbi-delivery-kit:comando`). Resumen:
 
-Guía paso a paso para personas: [`PLAYBOOK.md`](PLAYBOOK.md). Reglas para Claude: [`CLAUDE.md`](CLAUDE.md).
+| Paso | Quién | Comando / acción | Resultado |
+|---|---|---|---|
+| 1 | Claude | `/new-project <nombre>` | Carpeta del proyecto creada |
+| 2 | **Tú** | Dejas diseño en `intake/` y datos en `data/` | — |
+| 3 | Claude → **Tú** | Lee todo y te hace **una** ronda de preguntas | `state.json` (la especificación) para aprobar |
+| 4 | Claude → **Tú** | `/build-mockup <nombre>` | Mockup HTML para aprobar |
+| 5 | **Tú** | Guardas un PBIP vacío desde Power BI Desktop | Archivos `.pbip` en el proyecto |
+| 6 | Claude | `/build-pbi <nombre>` | Modelo y páginas de Power BI, validados y con capturas |
+| 7 | Claude | `/build-html <nombre>` | HTML interactivo con los datos reales |
+| 8 | Claude | Conciliación + revisión del modelo | Números verificados contra la fuente |
+
+### Paso 1 · Crear el proyecto
+```
+/new-project ventas-mensuales
+```
+Crea `projects/ventas-mensuales/` con: `brief.md` (objetivo), `data-contract.md` (datos),
+`state.json` (especificación), `state.md` (estado) y `decisions.md` (bitácora). El nombre se
+normaliza a minúsculas con guiones.
+
+### Paso 2 · Compartir lo que tengas (no hace falta todo)
+| Qué | Dónde |
+|---|---|
+| Imagen del dashboard que quieres lograr (**PNG**) | `projects/<nombre>/intake/` |
+| HTML / CSS / export de Claude Design (zip descomprimido) / paleta JSON | `projects/<nombre>/intake/` |
+| Excel, CSV o JSON con los datos | `projects/<nombre>/data/` |
+| Base de datos | Dile a Claude servidor, base y comparte un export del esquema |
+
+Luego escribe algo como: *"Ya dejé el diseño y los datos, sigue."*
+
+### Paso 3 · Responder una sola ronda de preguntas
+Claude extrae colores, fuente, tablas, tipos y relaciones solo. Te pregunta únicamente lo que no
+puede deducir, por ejemplo:
+- Qué significa cada indicador y qué se excluye (*"¿las devoluciones restan de las ventas?"*).
+- Si subir es bueno o malo (polaridad).
+- Qué representa una fila de los datos (*"una venta", "un partido"*).
+- Elementos del diseño que Power BI no puede hacer y con qué reemplazarlos.
+
+Lo que no sepas queda como `TBD — ask:` y no frena el resto. Revisa el `state.json` que te muestra
+y apruébalo (*"aprobado"*).
+
+### Paso 4 · Mockup
+```
+/build-mockup ventas-mensuales
+```
+Genera `mockups/<página>.html`: ábrelo en el navegador. Aquí es donde más rápido se ajusta:
+*"cambia el color de la gráfica de barras"*, *"pon el KPI de margen primero"*, *"el título debe
+decir…"*. Cuando te guste: *"aprobado"*.
+
+### Paso 5 · Tu único paso manual en Power BI
+1. Si te importa el formato de números: *Archivo → Opciones → Archivo actual → Configuración
+   regional* (p. ej. Español (Colombia)).
+2. Informe en blanco → *Archivo → Guardar como → Power BI Project (.pbip)* → dentro de
+   `projects/<nombre>/`.
+3. Déjalo abierto y **no guardes desde Desktop** mientras Claude trabaja.
+
+### Paso 6 · Construir en Power BI
+```
+/build-pbi ventas-mensuales
+```
+Claude crea el modelo (tablas, relaciones, calendario, medidas), genera las páginas igual al mockup,
+valida, recarga Desktop, toma capturas y las corrige. Si Desktop avisa de cambios sin guardar,
+ciérralo **sin guardar** y vuelve a abrir el `.pbip`.
+
+### Paso 7 · HTML interactivo
+```
+/build-html ventas-mensuales
+```
+Genera `html/<página>.html`: se abre en cualquier navegador sin instalar nada, con filtros,
+filtro cruzado al hacer clic y tooltips. Sus números deben ser iguales a los de Power BI.
+⚠️ Contiene los datos reales: no lo compartas sin revisar quién puede verlos.
+
+### Paso 8 · Cerrar
+Claude concilia los totales contra la fuente (`docs/validations/`), revisa el modelo con el agente
+`model-reviewer` y actualiza `state.md` y `decisions.md`. Publicar en el servicio de Power BI solo si
+lo pides.
+
+### En cualquier momento
+| Quieres… | Escribe |
+|---|---|
+| Saber en qué va el proyecto | `/status ventas-mensuales` |
+| Cambiar algo del informe | *"Cambia X en el state.json y actualiza el mockup, Power BI y el HTML"* |
+| Usar datos nuevos (otro mes) | Reemplaza el archivo en `data/`, actualiza en Power BI y corre `/build-html` |
+| Preparar otro computador | `/setup` |
+
+**Regla de oro:** todo cambio pasa por `state.json`; nunca edites a mano en Desktop una página que
+el kit genera, porque se sobrescribe en la próxima construcción.
+
+Guía extendida: [`PLAYBOOK.md`](PLAYBOOK.md). Reglas que sigue Claude: [`CLAUDE.md`](CLAUDE.md).
 
 ---
 
