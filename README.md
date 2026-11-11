@@ -106,7 +106,26 @@ Reinicia Claude Code. Los comandos quedan con el prefijo del plugin:
 ## 3. Guía de uso: de cero a un informe
 
 Todo se hace escribiendo en el chat de Claude Code (con el kit clonado: `/comando`; como plugin:
-`/powerbi-delivery-kit:comando`). Resumen:
+`/powerbi-delivery-kit:comando`).
+
+> **La forma fácil: un solo comando.**
+> ```
+> /dashboard ventas-mensuales
+> ```
+> Mira en qué fase está el proyecto, hace el siguiente paso y **se detiene cada vez que necesita
+> algo de ti**:
+> - que compartas el material,
+> - que respondas las preguntas,
+> - que apruebes la especificación,
+> - que apruebes el mockup,
+> - que guardes el PBIP.
+>
+> Cuando lo hagas, vuelve a escribir `/dashboard ventas-mensuales` y sigue desde ahí. Sirve para
+> proyectos nuevos y para retomar uno a medias.
+>
+> Los pasos de abajo son lo que hace `/dashboard` por dentro. También puedes correrlos uno por uno.
+
+Resumen:
 
 | Paso | Quién | Comando / acción | Resultado |
 |---|---|---|---|
@@ -187,7 +206,8 @@ lo pides.
 ### En cualquier momento
 | Quieres… | Escribe |
 |---|---|
-| Saber en qué va el proyecto | `/status ventas-mensuales` |
+| Seguir con el siguiente paso | `/dashboard ventas-mensuales` |
+| Saber en qué va el proyecto | `/status ventas-mensuales` (o `/status` para todos) |
 | Cambiar algo del informe | *"Cambia X en el state.json y actualiza el mockup, Power BI y el HTML"* |
 | Usar datos nuevos (otro mes) | Reemplaza el archivo en `data/`, actualiza en Power BI y corre `/build-html` |
 | Preparar otro computador | `/setup` |

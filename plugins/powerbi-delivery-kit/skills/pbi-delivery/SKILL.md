@@ -38,6 +38,7 @@ treat it as an illustration only, never as content to reuse.
 | `profile-data.js` | `.xlsx` `.csv` `.tsv` `.json` files/folders, or a DB schema export | `model-plan.json`, `queries.pq` (M + parameters), `data-contract.draft.md`, `profile.json` |
 | `draft-state.js` | tokens + model plan | First `state.json` (proposed KPI page, measures with PY/delta/status) |
 | `build-pbir.js` | `state.json` + `<name>.Report` | Power BI pages (PBIR) + registered theme; deterministic output |
+| `project-status.js` | `--project <folder>` or `--root <repo>` | JSON: phase (material → … → done), next step and who acts, evidence, blockers, warnings. Read-only; used by `/dashboard` and `/status` |
 | `build-html.js` | `state.json` (with `calc` per measure) + `data/` | `html/<page>.html`: self-contained interactive page (slicers, cross-filter, tooltips, live titles); prints every measure unfiltered for reconciliation |
 | `lib/read-data.js` · `lib/html-engine.js` · `lib/html-ui.js` | — | Shared readers (xlsx/csv/json) · measure engine (Node + browser) · browser runtime |
 

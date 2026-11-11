@@ -9,8 +9,11 @@ Report the state of a project. Argument: `$ARGUMENTS`
    - If `$ARGUMENTS` names a project, use `projects/$ARGUMENTS/`.
    - Else, if the current working directory is inside `projects/<name>/`, use that one.
    - Else, list every `projects/*/state.md` with its one-line status and ask which to expand.
-2. **Read** `projects/<name>/state.md` (and the latest entries of `decisions.md`).
+2. **Detect** the phase from the evidence on disk:
+   `node .claude/skills/pbi-delivery/scripts/project-status.js --project projects/<name>`
+   (`--root .` lists every project). Read `state.md` and the latest entries of `decisions.md`.
 3. **Report** concisely:
+   - Phase (`step n/10`), next action and who does it, plus any `warnings`.
    - Status and last-updated date (flag it if older than 14 days).
    - Open blockers, especially any `TBD — ask` items — quote the question.
    - Next step.

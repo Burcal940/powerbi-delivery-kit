@@ -11,7 +11,7 @@
       "name": "powerbi-delivery-kit",
       "source": "./plugins/powerbi-delivery-kit",
       "description": "Power BI delivery: shared design + data → state.json → HTML mockup, Power BI report (TMDL model + PBIR pages) and interactive HTML twin. Includes the vendored Microsoft powerbi-authoring skills and the Power BI Modeling MCP.",
-      "version": "0.1.0"
+      "version": "0.2.0"
     }
   ]
 }

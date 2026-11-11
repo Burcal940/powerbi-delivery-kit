@@ -13,6 +13,10 @@ Contrato datos ┘                        └─► Power BI (modelo + páginas)
 Idea clave: el mockup **no se convierte** a Power BI. Ambos salen del mismo `state.json`.
 Cambias el `state.json` → se regeneran el mockup y la página.
 
+**Atajo:** `/dashboard <nombre>` recorre todas las fases de abajo. Detecta en cuál va el proyecto
+(`scripts/project-status.js`), hace la siguiente y se detiene cuando necesita que apruebes o
+actúes. Después vuelves a escribir el mismo comando y sigue desde ahí.
+
 ## Antes de empezar (una vez por máquina)
 - Power BI Desktop instalado. Si quieres números tipo `$1,700`: *Opciones → Configuración regional → Inglés (EE. UU.)* **antes** de crear archivos.
 - Instala la fuente del design system (o acepta el respaldo Segoe UI).

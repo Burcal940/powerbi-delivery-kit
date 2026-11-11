@@ -20,7 +20,7 @@ PLAYBOOK.md                       # Step-by-step for any new project (human-read
 .mcp.json                         # Power BI Modeling MCP (local Power BI Desktop)
 .claude/
 ├── settings.json
-├── commands/                     # /new-project · /build-mockup · /build-pbi · /build-html · /status · /setup
+├── commands/                     # /dashboard (guided) · /new-project · /build-mockup · /build-pbi · /build-html · /status · /setup
 ├── agents/model-reviewer.md      # Reviews a semantic model: star schema, naming, measures
 ├── common/                       # VENDORED (Microsoft powerbi-authoring) — shared refs, LICENSE
 └── skills/
