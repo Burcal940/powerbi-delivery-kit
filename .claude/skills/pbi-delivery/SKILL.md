@@ -1,0 +1,109 @@
+---
+name: pbi-delivery
+description: Client-agnostic delivery of a Power BI report for any project, personal or enterprise. From whatever the user shares — an HTML/artifact mockup, a design system or palette, Excel/CSV/JSON files or a database — it derives design tokens, a Power BI theme, a data contract, Power Query with parameters and a state.json spec, then produces BOTH an HTML mockup and the real Power BI report (semantic model + PBIR pages). Use when starting a dashboard/report project, when the user shares a design or data to "turn into Power BI", for "mockup to Power BI", "connect this Excel/CSV/database", "data contract", "state.json", "/build-mockup", "/build-pbi".
+---
+
+# pbi-delivery — what you share → mockup + Power BI
+
+```
+ONE COMMAND:  node <skill>/scripts/intake.js --project <project folder> [--brand "<Brand>"]
+
+Shared image (PNG screenshot / export)        ─► read-image     ─► exact colors, sidebar, header, canvas ─┐
+Shared design (HTML · artifact · CSS · JSON)  ─► extract-design ─► design tokens ◄─────────────────────────┘ ─► make-theme ─► Power BI theme
+Shared data (Excel · CSV · JSON · DB schema)  ─► profile-data   ─► model plan + data contract + M with parameters
+                              tokens + model plan ─► draft-state ─► state.json ◄─ Claude reshapes pages to match the image/mockup (§4)
+state.json ─► mockup HTML (phase 4)   and   state.json ─► model via MCP (phase 6) + build-pbir pages (phase 7)
+state.json + real data ─► build-html ─► interactive HTML twin of the Power BI page (phase 7b)
+```
+
+**Where the user puts things** (inside the project folder): design material — images, HTML/artifact
+exports, CSS, design-system folders or zips, palette/theme JSON — in `intake/`; data files in
+`data/`; for a database, a schema export passed with `--schema`. Everything generated lands in
+`intake/generated/` with an `INTAKE.md` checklist. Nothing the user shared is ever overwritten.
+
+Nothing here is tied to a client or project. Brand values come from the shared design; tables,
+types, keys and relationships come from the shared data; business meaning comes from the user.
+A worked example lives in the repo where this skill was built (`projects/finance-tracker/`) —
+treat it as an illustration only, never as content to reuse.
+
+## Scripts (`scripts/`, Node 20+, no dependencies)
+
+| Script | Input | Output |
+|---|---|---|
+| `init-project.js` | `--root <repo> --name <name>` | Project skeleton in any repo (never overwrites) |
+| **`intake.js`** | `--project <folder>` (+ `--schema/--source/--server/--database` for a DB) | Runs every step below that applies to what was shared; writes `intake/generated/` + `INTAKE.md` |
+| `read-image.js` | PNG of a dashboard/design | Exact pixel colors by role (page, card, text, muted, border, accent, series, status), sidebar width, header height, canvas scale → CSS tokens |
+| `extract-design.js` | HTML / CSS / design-system folder / palette or theme JSON (+ the image CSS) | `design-tokens.json` (colors by role, font, type scale, canvas, sidebar, spacing, data colors, evidence, toConfirm) |
+| `make-theme.js` | `design-tokens.json` | Power BI theme JSON |
+| `profile-data.js` | `.xlsx` `.csv` `.tsv` `.json` files/folders, or a DB schema export | `model-plan.json`, `queries.pq` (M + parameters), `data-contract.draft.md`, `profile.json` |
+| `draft-state.js` | tokens + model plan | First `state.json` (proposed KPI page, measures with PY/delta/status) |
+| `build-pbir.js` | `state.json` + `<name>.Report` | Power BI pages (PBIR) + registered theme; deterministic output |
+| `build-html.js` | `state.json` (with `calc` per measure) + `data/` | `html/<page>.html`: self-contained interactive page (slicers, cross-filter, tooltips, live titles); prints every measure unfiltered for reconciliation |
+| `lib/read-data.js` · `lib/html-engine.js` · `lib/html-ui.js` | — | Shared readers (xlsx/csv/json) · measure engine (Node + browser) · browser runtime |
+
+## Rules
+
+1. **Derive, then confirm.** Run the intake scripts on everything shared before asking anything.
+   Ask ONE batched message with only what cannot be derived: metric definitions and exclusions,
+   polarity, fact grain, ambiguous dates, low-confidence design roles, infeasible mockup items.
+2. **state.json is the source of truth.** Change it first, then regenerate mockup and pages.
+   Pages listed in it are owned by `build-pbir.js` — never hand-edit them in Desktop.
+3. **Never invent business context.** Proposed measures are technical aggregations marked
+   `PROPOSED`/`TBD`; they become definitions only after the user confirms.
+4. **Parameters, not paths.** Every location (`SourcePath`, `Server`, `Database`) is an M
+   parameter; switching sample → file → DEV → PROD never touches measures or pages.
+5. **Only Power BI–feasible design.** Map the mockup with `references/feasibility.md`; record
+   substitutes in `pbiNotFeasible`.
+6. **Never hand-write the PBIP shell.** The user saves an empty PBIP from Power BI Desktop once.
+7. **No secrets or real data in git.** Credentials stay in Desktop/Service; data stays in
+   `data/` (git-ignored) or outside the repo.
+8. **Enterprise** projects also complete `references/enterprise.md`.
+
+## Pipeline
+
+| # | Phase | How | Read |
+|---|---|---|---|
+| 0 | Project skeleton | `init-project.js` (or the repo's `/new-project`) | `references/intake.md` §0 |
+| 1–3 | Intake: design + data + first spec | **`intake.js`** (one command), then open `intake/generated/INTAKE.md` | `references/intake.md` §1–3 |
+| 3b | Match the shared image/mockup **exactly** | Claude looks at every shared image/HTML and rewrites `state.json` pages block by block; font from the image | `references/intake.md` §4, `references/feasibility.md` |
+| 3c | One confirmation round | Everything in `INTAKE.md → To confirm` + definitions, exclusions, polarity, grain | `references/intake.md` §5 |
+| 4 | Mockup | Claude writes `mockups/<page>.html` from state.json (+ artifact if shared) | `references/mockup.md` |
+| 5 | Empty PBIP | **User**: Desktop → *Save as → Power BI Project* into the project folder | — |
+| 6 | Model | Modeling MCP on the Desktop instance: parameters, partitions from `queries.pq`, tables/types/hidden from `model-plan.json`, relationships, marked `Dim Date`, measures from state.json; DAX checks vs. the numbers in the mockup/source | `semantic-model-authoring` skill |
+| 7 | Pages | `build-pbir.js` → `powerbi-report-author validate` → Desktop status/reload → screenshot → review → fix state.json → repeat | `powerbi-report-cli` skill (authoring) |
+| 7b | Interactive HTML | `build-html.js` → numbers it prints = Power BI reconciliation → open/screenshot → fix state.json → repeat. Output holds real data: never commit/publish without the user's OK | `references/state-schema.md` (calc, slicers) |
+| 8 | Verify & hand over | Reconcile totals (`docs/validations/`), model review, update `state.md`/`decisions.md`, commit; publish only on request | checklist below, `references/enterprise.md` |
+
+Commands (phase 7):
+```
+node <skill>/scripts/build-pbir.js --state <project>/state.json --report <project>/<name>.Report [--page <id>]
+powerbi-report-author validate <project>/<name>.Report
+```
+Fix every validation error and every generator warning (`Measure not found` means phase 6 is
+incomplete). If Desktop reports unsaved changes, ask the user to close it **without saving** and
+reopen the `.pbip` before reloading.
+
+## Done checklist
+
+- [ ] Intake outputs reviewed; every `toConfirm` item answered or listed as a blocker in `state.md`
+- [ ] Every number has a reference (PY / target / budget) and a status color where the design asks
+- [ ] Every title states the insight (measure-driven when it depends on data)
+- [ ] Totals reconcile with the source (evidence in `docs/validations/`)
+- [ ] `validate` = 0 errors; generator = 0 warnings; screenshots reviewed after the last change
+- [ ] Data locations are parameters; no credentials or real data in git
+- [ ] Enterprise: `references/enterprise.md` complete
+
+## Limits
+
+- Generator item types: `kpi`, `kpiGroup`, `chart` (column/bar/line/combo), `table`, `text`.
+- `build-html.js` computes measures from `calc` specs, not from DAX: when a DAX measure changes, update
+  its `calc` too and re-check that both print the same numbers. One fact table; Dim Date columns are
+  derived from the fact date; other dimensions are joined through `model.relationships`.
+  Slicers, maps, matrices, what-if sliders, bookmarks and working navigation are authored with
+  powerbi-report-cli on pages not owned by state.json (or by extending the generator).
+- Images: PNG is read pixel-exact (colors, sidebar, header, scale). JPG/WEBP: ask for a PNG export
+  (or read layout visually only). The layout itself (which KPIs/charts/tables) is always mapped by
+  Claude looking at the image — the script gives exact values, Claude gives structure.
+- Claude Design (claude.ai/design) exports (zip/HTML) work as design input: unzip into `intake/`.
+- DB intake uses a schema export (no row stats); volumes and uniqueness are confirmed with the user.
+- Model culture (number separators) is fixed when Desktop creates the file.

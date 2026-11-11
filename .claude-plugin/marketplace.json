@@ -1,0 +1,17 @@
+{
+  "name": "powerbi-kit",
+  "owner": {
+    "name": "Power BI Delivery Kit"
+  },
+  "metadata": {
+    "description": "Claude Code plugins for Power BI delivery"
+  },
+  "plugins": [
+    {
+      "name": "powerbi-delivery-kit",
+      "source": "./plugins/powerbi-delivery-kit",
+      "description": "Power BI delivery: shared design + data → state.json → HTML mockup, Power BI report (TMDL model + PBIR pages) and interactive HTML twin. Includes the vendored Microsoft powerbi-authoring skills and the Power BI Modeling MCP.",
+      "version": "0.1.0"
+    }
+  ]
+}

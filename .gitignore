@@ -1,0 +1,19 @@
+# Projects are separate git repos (client context, data paths) — never part of the kit
+projects/*
+!projects/.gitkeep
+
+# Power BI Desktop — local/derived artifacts (never commit)
+cache.abf
+**/.pbi/localSettings.json
+**/unappliedChanges.json
+
+# Real data — never committed (Power Query reads it through the SourcePath parameter)
+projects/*/data/*
+!projects/*/data/README.md
+# Interactive HTML (build-html.js) embeds real data rows
+projects/*/html/
+# Data profile keeps sample values per column (regenerate with intake.js)
+projects/*/intake/generated/profile.json
+
+# Claude Code — per-user local settings
+.claude/settings.local.json

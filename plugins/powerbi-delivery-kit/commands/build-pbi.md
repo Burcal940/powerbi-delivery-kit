@@ -1,0 +1,35 @@
+---
+description: Build the Power BI model and pages from a project's state.json (pbi-delivery phases 6–8)
+argument-hint: <project-name> [page-id]
+---
+
+> `<pbi-delivery>` = the folder of this plugin's `pbi-delivery` skill (its base directory is shown when the skill loads).
+
+Build or update the Power BI report for a project. Arguments: `$ARGUMENTS`.
+
+Read the `pbi-delivery` skill first; it routes to `semantic-model-authoring` (model) and
+`powerbi-report-cli` (pages, validation, preview). Follow their rules.
+
+1. **Preconditions.** `projects/<name>/state.json` approved; `projects/<name>/*.pbip` exists
+   (saved by Desktop — if not, ask the user to save an empty PBIP there and stop).
+2. **Model (only what changed).** Connect the Power BI Modeling MCP to the Desktop instance that
+   has this project open. Per `data-contract.md`: parameters, partitions (sample `#table` or real
+   connector), relationships, marked `Dim Date`, every measure in `state.model.measures` plus
+   helper measures the pages use. Verify key numbers with DAX against `sampleData`/source.
+   Ask the user to save from Desktop so TMDL lands on disk; commit that separately
+   (`<name>: model …`).
+3. **Pages.**
+   ```
+   node <pbi-delivery>/scripts/build-pbir.js --state projects/<name>/state.json --report projects/<name>/<name>.Report [--page <id>]
+   powerbi-report-author validate projects/<name>/<name>.Report
+   ```
+   Resolve every error and every generator warning (`Measure not found`, missing DS colors).
+4. **Preview loop** (powerbi-report-cli authoring rules): Desktop `--status`; if
+   `hasUnsavedChanges` is false → `--reload`; if true → ask the user to close Desktop **without
+   saving** and reopen the `.pbip`. Screenshot every affected page, review against
+   `screenshot-review.md` and the mockup; fix in `state.json`, regenerate, repeat. Delete the
+   temporary screenshot folder at the end.
+5. **Verify.** Reconcile totals into `docs/validations/`; run `model-reviewer`; enterprise →
+   `pbi-delivery/references/enterprise.md`.
+6. **Close.** Update `state.md`, log non-obvious choices in `decisions.md`, commit as
+   `<name>: build <page-id> in Power BI`. Publish only if the user explicitly asks.

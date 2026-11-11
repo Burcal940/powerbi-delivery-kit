@@ -1,0 +1,73 @@
+{
+  "$schema": "pbi-delivery/state/1",
+  "project": "{{PROJECT_NAME}}",
+  "updated": "{{YYYY-MM-DD}}",
+  "dataStatus": "sample",
+  "designSystem": {
+    "name": "{{DS_NAME}}",
+    "skill": "{{CLIENT}}-dashboard-design",
+    "theme": ".claude/skills/{{CLIENT}}-dashboard-design/assets/{{CLIENT}}-theme.json",
+    "themeName": "{{ThemeBaseName}}",
+    "font": "{{PrimaryFont}}, Segoe UI, sans-serif",
+    "colors": {
+      "ink": "{{text-primary}}",
+      "muted": "{{text-muted}}",
+      "subtle": "{{text-secondary}}",
+      "surface": "{{surface-card}}",
+      "border": "{{border-default}}",
+      "accent": "{{primary}}",
+      "sidebar": "{{sidebar-bg}}",
+      "sidebarText": "{{sidebar-text}}",
+      "sidebarSection": "{{sidebar-section}}",
+      "onAccent": "#FFFFFF"
+    }
+  },
+  "canvas": { "width": 1920, "height": 1080, "padding": 32, "gutter": 24, "radius": 12 },
+  "shell": {
+    "sidebar": { "width": 240, "brand": "{{WORDMARK}}", "subtitle": "{{REPORT_NAME}}", "section": "MAIN MENU", "items": ["Overview"] },
+    "header": { "height": 72 }
+  },
+  "model": {
+    "measureTable": "_Measures",
+    "measures": [
+      { "name": "{{KPI}}", "definition": "TBD — ask: formula and exclusions", "format": "#,##0" },
+      { "name": "{{KPI}} PY", "definition": "{{KPI}} same period previous year", "format": "#,##0" },
+      { "name": "_Delta Label {{KPI}}", "definition": "'▲ x.x% vs PY' or '—'", "hidden": true },
+      { "name": "_Status Color {{KPI}}", "definition": "TBD — ask: polarity (is up good?)", "hidden": true },
+      { "name": "_Headline Overview", "definition": "Insight sentence for the page", "hidden": true }
+    ]
+  },
+  "pages": [
+    {
+      "id": "overview",
+      "title": "Overview",
+      "mockup": "mockups/overview.html",
+      "headline": { "measure": "_Headline Overview" },
+      "tag": "{{PERIOD}} · sample data",
+      "filters": [],
+      "rows": [
+        {
+          "height": 140,
+          "items": [
+            { "type": "kpi", "label": "{{KPI}}", "measure": "{{KPI}}", "reference": "_Delta Label {{KPI}}", "status": "_Status Color {{KPI}}" }
+          ]
+        },
+        {
+          "height": 380,
+          "items": [
+            { "type": "chart", "visual": "lineChart", "title": "TBD — insight title", "category": "Dim Date[Month]",
+              "series": [{ "measure": "{{KPI}}", "color": "{{primary}}" }, { "measure": "{{KPI}} PY", "label": "PY", "color": "{{secondary}}" }] }
+          ]
+        },
+        {
+          "height": "fill",
+          "items": [
+            { "type": "table", "title": "TBD — insight title", "columns": [{ "field": "Dim {{Entity}}[{{Name}}]" }, { "measure": "{{KPI}}" }] }
+          ]
+        }
+      ]
+    }
+  ],
+  "pbiNotFeasible": [],
+  "sampleData": {}
+}
