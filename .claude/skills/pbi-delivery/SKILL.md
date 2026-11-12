@@ -12,7 +12,7 @@ Shared image (PNG screenshot / export)        ─► read-image     ─► exact
 Shared design (HTML · artifact · CSS · JSON)  ─► extract-design ─► design tokens ◄─────────────────────────┘ ─► make-theme ─► Power BI theme
 Shared data (Excel · CSV · JSON · DB schema)  ─► profile-data   ─► model plan + data contract + M with parameters
                               tokens + model plan ─► draft-state ─► state.json ◄─ Claude reshapes pages to match the image/mockup (§4)
-state.json ─► mockup HTML (phase 4)   and   state.json ─► model via MCP (phase 6) + build-pbir pages (phase 7)
+state.json ─► mockup HTML (phase 4)   and   state.json ─► build-model TMDL (phase 6) + build-pbir pages (phase 7)
 state.json + real data ─► build-html ─► interactive HTML twin of the Power BI page (phase 7b)
 ```
 
@@ -37,6 +37,7 @@ treat it as an illustration only, never as content to reuse.
 | `make-theme.js` | `design-tokens.json` | Power BI theme JSON |
 | `profile-data.js` | `.xlsx` `.csv` `.tsv` `.json` files/folders, or a DB schema export | `model-plan.json`, `queries.pq` (M + parameters), `data-contract.draft.md`, `profile.json` |
 | `draft-state.js` | tokens + model plan | First `state.json` (proposed KPI page, measures with PY/delta/status) |
+| `build-model.js` | `--project <folder> [--check \| --import \| --write [--prune]]` | Semantic model as code: state.json `model` ↔ TMDL (measures with DAX, tables with M, relationships, Dim Date). `--check` exits 1 on drift |
 | `build-pbir.js` | `state.json` + `<name>.Report` | Power BI pages (PBIR) + registered theme; deterministic output |
 | `pbi-desktop.js` | `--project <folder> [--fresh] [--refresh] [--screenshot <png>] [--page <name>] [--timeout 600]` | Opens the `.pbip` in Power BI Desktop. `--fresh` closes it without saving, reopens it (reloads TMDL + PBIR from disk) and presses Home → Refresh (a changed model reopens with no data). Waits until ready, then saves a screenshot. Never runs past `--timeout`; reopens once on HOST_UNAVAILABLE; prints the text of any Desktop error dialog |
 | `project-status.js` | `--project <folder>` or `--root <repo>` | JSON: phase (material → … → done), next step and who acts, evidence, blockers, warnings. Read-only; used by `/dashboard` and `/status` |
@@ -71,7 +72,7 @@ treat it as an illustration only, never as content to reuse.
 | 3c | One confirmation round | Everything in `INTAKE.md → To confirm` + definitions, exclusions, polarity, grain | `references/intake.md` §5 |
 | 4 | Mockup | Claude writes `mockups/<page>.html` from state.json (+ artifact if shared) | `references/mockup.md` |
 | 5 | Empty PBIP | **User**: Desktop → *Save as → Power BI Project* into the project folder | — |
-| 6 | Model | Modeling MCP on the Desktop instance: parameters, partitions from `queries.pq`, tables/types/hidden from `model-plan.json`, relationships, marked `Dim Date`, measures from state.json; DAX checks vs. the numbers in the mockup/source | `semantic-model-authoring` skill |
+| 6 | Model | **`build-model.js --write`** writes the TMDL from state.json (partitions from `queries.pq`, tables/types/hidden from `model-plan.json`, relationships, marked `Dim Date`, measures with `dax`), then `pbi-desktop.js --fresh` loads it. The modeling MCP is optional: use it to test DAX against the open model, then `--import` the result. `build-model.js --check` = 0 drift before commit | `references/state-schema.md` (model as code), `semantic-model-authoring` skill |
 | 7 | Pages | `build-pbir.js` → `powerbi-report-author validate` → Desktop status/reload → screenshot → review → fix state.json → repeat | `powerbi-report-cli` skill (authoring) |
 | 7b | Interactive HTML | `build-html.js` → numbers it prints = Power BI reconciliation → open/screenshot → fix state.json → repeat. Output holds real data: never commit/publish without the user's OK | `references/state-schema.md` (calc, slicers) |
 | 8 | Verify & hand over | Reconcile totals (`docs/validations/`), model review, update `state.md`/`decisions.md`, commit; publish only on request | checklist below, `references/enterprise.md` |

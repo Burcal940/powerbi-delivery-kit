@@ -93,6 +93,25 @@ in the HTML; it should match the model culture.
 The generator checks every measure used on a page exists in the TMDL.
 `model.tables` / `model.relationships` (optional) summarize `intake/model-plan.json`.
 
+### Model as code (`build-model.js`)
+
+`build-model.js` keeps `model` and the PBIP's TMDL equal, so the model can be rebuilt without the MCP:
+`--import` (TMDL → state, once, for a model built by hand/MCP), `--write [--prune]` (state → TMDL),
+`--check` (default; exit 1 on drift — run it before every commit). Fields it reads/writes:
+
+| Where | Field | Meaning |
+|---|---|---|
+| measure | `dax` | DAX expression (source of truth for Power BI). Without it, `--write` derives DAX from a simple `calc` (sum/avg/min/max/count/distinct/divide) or skips the measure — and every measure that uses it — with a warning |
+| measure | `formatString` · `folder` · `doc` · `hidden` | TMDL `formatString`, `displayFolder`, `///` description, `isHidden` (`format` is the HTML/mockup format) |
+| table | `tmdl` | `{ doc, props, columns[], partition: { mode, m }, annotations, other }` exactly as on disk. Present → written as-is; absent → generated |
+| fact table | `derivedColumns[].m` · `.type` | M expression after `each` (e.g. `if Text.Contains([Usage Type], "gp3") then "gp3" else "gp2"`) and its type (`text` default). Must give the same values as `calc` |
+| fact table | `dropColumns[]` | Source columns removed in M |
+| static table | `rows` | Written as a `#table` partition |
+
+Lineage tags and relationship ids are kept from disk; `.platform`, `definition.pbism`,
+`database.tmdl`, `cultures/` and parameter values are never touched. `--check` also flags a measure
+whose `dax` and `calc` disagree on the aggregation (e.g. `DISTINCTCOUNT` vs `distinct` = NOBLANK).
+
 ## pages
 
 ```json

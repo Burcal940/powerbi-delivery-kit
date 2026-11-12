@@ -63,8 +63,9 @@ Power BI Desktop → informe en blanco → *Archivo → Guardar como → Power B
 
 ## Fase 6–7 · Power BI
 `/build-pbi <nombre>`:
-- **Modelo** (MCP): conecta la fuente con parámetros, tablas en estrella, medidas del spec,
-  y verifica con DAX que los números coinciden con el mockup.
+- **Modelo** (como código, `build-model.js`): escribe el TMDL desde el `state.json` — fuente con
+  parámetros, tablas en estrella, medidas con su DAX — y `--check` avisa si el modelo y el spec
+  se separan. El MCP queda opcional para probar DAX contra el modelo abierto.
 - **Páginas** (generador): construye cada página del `state.json` con el theme del cliente,
   valida, recarga Desktop, toma captura y la revisa hasta que queda limpia.
 
