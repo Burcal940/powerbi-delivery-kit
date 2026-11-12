@@ -24,6 +24,8 @@ put('data-contract.md', fill(fs.readFileSync(path.join(tpl, 'data-contract.md'),
 put('state.md', `# State — ${name}\n\n**Status:** intake — collecting design and data\n**Last updated:** ${new Date().toISOString().slice(0, 10)}\n\n## Blockers\n\n- \n\n## Next step\n\nRun intake (design + data) — see pbi-delivery SKILL.md.\n\n## Done\n\n- Project created.\n`);
 put('decisions.md', `# Decisions — ${name}\n\n## ${new Date().toISOString().slice(0, 10)} — Project created\n- Scaffolded with pbi-delivery/scripts/init-project.js.\n`);
 put('data/README.md', 'Real data extracts live here and are NOT committed (add `**/data/*` except this README to .gitignore). Point Power Query at this folder with the SourcePath parameter.\n');
+// the project's own .gitignore (each project can be its own repo)
+put('.gitignore', '# Power BI Desktop - local/derived artifacts\n**/.pbi/cache.abf\n**/.pbi/localSettings.json\n**/.pbi/unappliedChanges.json\n*.pbix\n\n# Real data and the HTML that embeds it\ndata/*\n!data/README.md\n!data/.gitkeep\nhtml/\nintake/generated/profile.json\n\n# Credentials\n.env\n*.pem\n');
 // keep real data out of git in any repo
 const gi = path.join(root, '.gitignore');
 const rel = (p) => path.relative(root, path.join(base, p)).replace(/\\/g, '/');

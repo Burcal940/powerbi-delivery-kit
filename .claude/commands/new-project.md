@@ -11,6 +11,8 @@ Project name argument: `$ARGUMENTS`
 2. **Copy.** If the repo has `_template/`, copy it recursively to `projects/<name>/`. Otherwise
    (any other repo) run `node .claude/skills/pbi-delivery/scripts/init-project.js --root . --name <name>`,
    which creates the same skeleton from the skill's `templates/` and adds the git-ignore rules.
+   Then run `git init` inside `projects/<name>/`: every project is its own repo (the kit ignores
+   `projects/*`); its `.gitignore` keeps out `cache.abf`, local settings, `data/` and `html/`.
 3. **Intake first — derive before asking** (`pbi-delivery/references/intake.md`). Ask the user to
    share what they have — image PNG, HTML/artifact or Claude Design export, CSS/palette, data files
    or a DB schema export — into `projects/<name>/intake/` and `projects/<name>/data/` (exact message

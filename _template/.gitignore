@@ -1,0 +1,22 @@
+# This project is its own git repo (the kit repo ignores projects/*)
+
+# Power BI Desktop - local/derived artifacts (never commit)
+**/.pbi/cache.abf
+**/.pbi/localSettings.json
+**/.pbi/unappliedChanges.json
+*.pbix
+
+# Real data - never committed (Power Query reads it through the SourcePath parameter)
+data/*
+!data/README.md
+!data/.gitkeep
+
+# Interactive HTML (build-html.js) embeds real data rows
+html/
+
+# Data profile keeps sample values per column (regenerate with intake.js)
+intake/generated/profile.json
+
+# Credentials
+.env
+*.pem
