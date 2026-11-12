@@ -30,7 +30,7 @@ cómo hacer un informe.
 | **Node.js 20+** | `winget install OpenJS.NodeJS.LTS` | `node --version` |
 | **GitHub CLI** (si el repositorio es privado) | `winget install GitHub.cli` ¹ | `gh --version` |
 | **Power BI Desktop** | Microsoft Store | Abre normalmente |
-| CLI de informes de Power BI | `npm install -g @microsoft/powerbi-report-authoring-cli@latest` | `powerbi-report-author --version` |
+| CLI de informes de Power BI | `npm install -g @microsoft/powerbi-report-authoring-cli@0.5.0` | `powerbi-report-author --version` |
 | Microsoft Edge | Viene con Windows (se usa para capturas) | — |
 
 > **Reinicia VS Code después de instalar.** Si una herramienta está instalada pero la terminal dice
