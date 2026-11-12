@@ -68,7 +68,28 @@ Power BI Desktop → informe en blanco → *Archivo → Guardar como → Power B
 - **Páginas** (generador): construye cada página del `state.json` con el theme del cliente,
   valida, recarga Desktop, toma captura y la revisa hasta que queda limpia.
 
-Si Desktop dice que hay cambios sin guardar: ciérralo **sin guardar** y vuelve a abrir el `.pbip`.
+**Cómo entra en Power BI:** Desktop lee la carpeta del PBIP solo al abrir el archivo. Si Claude
+cambia el modelo o las páginas con Desktop abierto, no verás nada nuevo hasta que lo reabras.
+Claude lo hace con un solo comando:
+
+```
+node .claude/skills/pbi-delivery/scripts/pbi-desktop.js --project projects/<nombre> --fresh --screenshot captura.png
+```
+
+El comando:
+- cierra Desktop **sin guardar** si estaba abierto;
+- abre el `.pbip` y espera a que cargue;
+- pulsa **Inicio → Actualizar** solo (un modelo que cambió se abre sin datos);
+- toma una captura para revisarla contra el mockup.
+
+Tú no tienes que tocar nada. Si algo se traba, el comando se rinde a los 10 minutos (`--timeout`)
+y, si se pierde la conexión con Desktop, lo reabre una vez por su cuenta.
+
+Lo que debes saber:
+- Si tienes cambios hechos a mano en Desktop, guárdalos antes o se pierden.
+- Si aparece una ventana de error en Desktop (TMDL, Power Query), el comando muestra su texto.
+- Para ver datos nuevos (un CSV de otro mes) sin reabrir: `pbi-desktop.js --project projects/<nombre> --refresh`.
+- No guardes desde Desktop mientras Claude edita archivos.
 
 ## Fase 8 · Cerrar
 Conciliación de totales vs. la fuente (`docs/validations/`), revisión del modelo, commit.
