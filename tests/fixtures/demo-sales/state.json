@@ -1,0 +1,89 @@
+{
+  "$schema": "pbi-delivery/state/1",
+  "project": "demo-sales",
+  "updated": "2026-01-01",
+  "dataStatus": "sample",
+  "locale": "en-US",
+  "intake": { "tokens": "intake/generated/design-tokens.json", "plan": "intake/generated/model-plan.json", "toConfirm": [] },
+  "designSystem": {
+    "name": "Demo",
+    "theme": "intake/generated/theme.json",
+    "themeName": "Demo",
+    "font": "Segoe UI, sans-serif",
+    "colors": {
+      "page": "#F4F5F7", "ink": "#1F2933", "muted": "#6B7785", "subtle": "#9AA5B1", "surface": "#FFFFFF", "border": "#E1E4E8",
+      "accent": "#3B6FD8", "secondary": "#F2A33A", "sidebar": "#1F2933", "sidebarSection": "#6B7785",
+      "onAccent": "#FFFFFF", "good": "#2E9D5B", "bad": "#D14343", "warning": "#F2A33A"
+    }
+  },
+  "canvas": { "width": 1920, "height": 1080, "padding": 32, "gutter": 24, "radius": 12 },
+  "shell": { "header": { "height": 72 } },
+  "pbiNotFeasible": [],
+  "model": {
+    "measureTable": "_Measures",
+    "tables": [
+      { "name": "Fact Sales", "role": "fact", "source": "sales.csv", "grain": "one row = one order line (fictional test data)" },
+      { "name": "Dim Product", "role": "dimension", "source": "products.csv", "grain": "one row = one product" },
+      { "name": "Order Size", "role": "static", "rows": [
+        { "Band": "Small", "Order": 1, "Min": 0, "Max": 99.99 },
+        { "Band": "Medium", "Order": 2, "Min": 100, "Max": 249.99 },
+        { "Band": "Large", "Order": 3, "Min": 250, "Max": 99999 }
+      ] }
+    ],
+    "relationships": [
+      { "fromTable": "Fact Sales", "fromColumn": "Product Key", "toTable": "Dim Product", "toColumn": "Product Key", "cardinality": "many-to-one", "direction": "single" },
+      { "fromTable": "Fact Sales", "fromColumn": "Order Date", "toTable": "Dim Date", "toColumn": "Date", "cardinality": "many-to-one", "direction": "single" }
+    ],
+    "measures": [
+      { "name": "Total Amount", "definition": "Sum of order amounts", "format": "$#,##0", "dax": "SUM('Fact Sales'[Amount])", "calc": { "agg": "sum", "column": "Fact Sales[Amount]" } },
+      { "name": "Total Units", "definition": "Sum of units", "format": "#,##0", "calc": { "agg": "sum", "column": "Fact Sales[Units]" } },
+      { "name": "Orders", "definition": "Number of order lines", "format": "#,##0", "dax": "COUNTROWS('Fact Sales')", "calc": { "agg": "count" } },
+      { "name": "Avg Order Value", "definition": "Total Amount / Orders", "format": "$#,##0.00", "calc": { "divide": ["Total Amount", "Orders"] } },
+      { "name": "Products Sold", "definition": "Distinct products with sales", "format": "#,##0", "calc": { "agg": "distinct", "column": "Fact Sales[Product Key]" } },
+      { "name": "Widget Amount", "definition": "Amount of the Widgets category", "format": "$#,##0",
+        "dax": "CALCULATE(SUM('Fact Sales'[Amount]), 'Dim Product'[Category] = \"Widgets\")",
+        "calc": { "agg": "sum", "column": "Fact Sales[Amount]", "where": { "Dim Product[Category]": ["Widgets"] } } },
+      { "name": "Band Orders", "definition": "Orders whose amount falls in the Order Size band", "format": "#,##0",
+        "dax": "VAR lo = SELECTEDVALUE('Order Size'[Min]) VAR hi = SELECTEDVALUE('Order Size'[Max]) RETURN IF(ISBLANK(lo), [Orders], CALCULATE([Orders], 'Fact Sales'[Amount] >= lo, 'Fact Sales'[Amount] <= hi))",
+        "calc": { "js": "(c) => c.ctx ? c.m('Orders', c.filter(c.rows, { field: 'Fact Sales[Amount]', min: c.ctx.Min, max: c.ctx.Max })) : c.m('Orders')" } },
+      { "name": "_Headline Overview", "definition": "Insight sentence", "hidden": true,
+        "dax": "FORMAT([Orders], \"#,##0\") & \" orders, \" & FORMAT([Total Amount], \"$#,##0\") & \" in sales\"",
+        "calc": { "template": "{Orders} orders, {Total Amount} in sales" } }
+    ]
+  },
+  "pages": [
+    {
+      "id": "overview",
+      "title": "Overview",
+      "headline": { "measure": "_Headline Overview" },
+      "tag": "Fictional test data",
+      "slicers": [{ "field": "Fact Sales[Region]", "type": "list", "label": "Region" }],
+      "rows": [
+        { "height": 140, "items": [
+          { "type": "kpi", "label": "Amount", "measure": "Total Amount" },
+          { "type": "kpi", "label": "Orders", "measure": "Orders" },
+          { "type": "kpi", "label": "Avg order", "measure": "Avg Order Value" },
+          { "type": "kpi", "label": "Products", "measure": "Products Sold" },
+          { "type": "kpi", "label": "Widgets", "measure": "Widget Amount" }
+        ] },
+        { "height": "fill", "items": [
+          { "type": "chart", "visual": "columnChart", "title": "Amount by category", "category": "Dim Product[Category]", "series": [{ "measure": "Total Amount" }] },
+          { "type": "chart", "visual": "lineChart", "title": "Amount by month", "category": "Dim Date[Month]", "series": [{ "measure": "Total Amount" }] },
+          { "type": "chart", "visual": "barChart", "title": "Orders by size", "category": "Order Size[Band]", "series": [{ "measure": "Band Orders" }] }
+        ] }
+      ]
+    },
+    {
+      "id": "north",
+      "title": "North",
+      "headline": { "measure": "_Headline Overview" },
+      "filters": [{ "field": "Fact Sales[Region]", "values": ["North"] }],
+      "rows": [
+        { "height": 140, "items": [
+          { "type": "kpi", "label": "Amount", "measure": "Total Amount" },
+          { "type": "kpi", "label": "Units", "measure": "Total Units" }
+        ] }
+      ]
+    }
+  ]
+}

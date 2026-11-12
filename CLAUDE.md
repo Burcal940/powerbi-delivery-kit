@@ -28,6 +28,7 @@ PLAYBOOK.md                       # Step-by-step for any new project (human-read
     ├── semantic-model-authoring/ # VENDORED — model / DAX / TMDL (do not hand-edit)
     └── powerbi-report-cli/       # VENDORED — PBIR authoring, validation, preview (do not hand-edit)
 tools/build-plugin.js             # Packages .claude/ as a plugin (run after changing .claude/)
+tests/run.js                      # End-to-end script tests on a fictional fixture (CI: .github/workflows/test.yml)
 plugins/powerbi-delivery-kit/     # GENERATED plugin — never edit; source is .claude/
 .claude-plugin/marketplace.json   # GENERATED — lets /plugin marketplace add <this repo> install it
 _template/                        # Copied by /new-project — never edit a project through it
@@ -85,7 +86,8 @@ Modeling defaults: star schema, single-direction relationships dimension → fac
 
 ## Commit hygiene
 
-One change → one commit. Kit repo: subjects start with `repo:`. Project repos: project name in the
+One change → one commit. Kit repo: subjects start with `repo:`; run `node tests/run.js` before
+pushing a change to `.claude/` (it also fails if the generated plugin is stale). Project repos: project name in the
 subject (`sales-performance: add Net Revenue YoY %`); files saved by Desktop are committed separately.
 Never commit personal data to the kit (names, emails, local paths): use the GitHub no-reply email.
 

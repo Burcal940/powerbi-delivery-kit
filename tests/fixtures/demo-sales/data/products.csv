@@ -1,0 +1,7 @@
+product_id,product_name,category,list_price
+P01,Basic Widget,Widgets,12.5
+P02,Pro Widget,Widgets,30
+P03,Gadget S,Gadgets,45
+P04,Gadget L,Gadgets,80
+P05,Cable Pack,Accessories,8
+P06,Stand,Accessories,22
