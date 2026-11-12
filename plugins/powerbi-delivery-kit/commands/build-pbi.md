@@ -12,12 +12,17 @@ Read the `pbi-delivery` skill first; it routes to `semantic-model-authoring` (mo
 
 1. **Preconditions.** `projects/<name>/state.json` approved; `projects/<name>/*.pbip` exists
    (saved by Desktop — if not, ask the user to save an empty PBIP there and stop).
-2. **Model (only what changed).** Connect the Power BI Modeling MCP to the Desktop instance that
-   has this project open. Per `data-contract.md`: parameters, partitions (sample `#table` or real
-   connector), relationships, marked `Dim Date`, every measure in `state.model.measures` plus
-   helper measures the pages use. Verify key numbers with DAX against `sampleData`/source.
-   Ask the user to save from Desktop so TMDL lands on disk; commit that separately
-   (`<name>: model …`).
+2. **Model (only what changed) — as code.** Put every model change in `state.json` first
+   (`dax` per measure, `derivedColumns[].m`, `dropColumns`, `rows`; see `state-schema.md` → Model as code).
+   Model built earlier by hand or with the MCP and `state.json` has no `dax` yet → run `--import` once.
+   ```
+   node <pbi-delivery>/scripts/build-model.js --project projects/<name> --write
+   ```
+   Resolve every warning (measure without `dax`, derived column without `m`). It refuses to drop
+   what is on disk but not in `state.json`; add `--prune` only when that removal is intended.
+   The Modeling MCP is optional: use it to try DAX against the open model and verify key numbers,
+   then `--import` so `state.json` keeps the result. Finish with `--check` = 0 differences.
+   Commit as `<name>: model …`.
 3. **Pages.**
    ```
    node <pbi-delivery>/scripts/build-pbir.js --state projects/<name>/state.json --report projects/<name>/<name>.Report [--page <id>]
