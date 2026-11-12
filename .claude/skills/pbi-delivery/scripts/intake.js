@@ -83,7 +83,7 @@ if (A.schema || dataFiles.length) {
 
 // ---------- 5. spec ----------
 const statePath = fs.existsSync(path.join(P, 'state.json')) ? path.join(GEN, 'state.draft.json') : path.join(P, 'state.json');
-const dsArgs = ['--name', name, '--brand', brand, '--out', statePath];
+const dsArgs = ['--name', name, '--brand', brand, '--out', statePath, '--base', P];
 if (tokensPath) dsArgs.push('--tokens', tokensPath);
 if (planPath) dsArgs.push('--plan', planPath);
 // theme path relative to the project folder (build-pbir resolves it next to state.json)
