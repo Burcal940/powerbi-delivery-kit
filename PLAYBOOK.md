@@ -93,7 +93,9 @@ Lo que debes saber:
 - No guardes desde Desktop mientras Claude edita archivos.
 
 ## Fase 8 · Cerrar
-Conciliación de totales vs. la fuente (`docs/validations/`), revisión del modelo, commit.
+Conciliación automática (`reconcile.js`: cada medida en DAX contra el modelo abierto en Desktop =
+lo que calcula el HTML; deja la evidencia en `docs/validations/reconcile-<fecha>.md`), totales vs.
+la fuente que tú indiques, `build-model.js --check` sin diferencias, revisión del modelo, commit.
 Publicar en el servicio solo cuando lo pidas.
 
 ## Fuentes de datos (todas usan el mismo contrato)

@@ -27,7 +27,7 @@ Read the `pbi-delivery` skill first. Its rules apply to every step below.
    | `pbip` | **User** | Explain the one manual step: Desktop regional settings, then *File → Save as → Power BI Project* into `projects/<name>/`. **Stop.** |
    | `pbi` | Claude | Run `build-pbi` steps 2–4 (model, pages, validate, preview loop). |
    | `html` | Claude | Run `build-html`. Its printed numbers must equal Power BI's. |
-   | `close` | Claude | Run `build-pbi` steps 5–6: reconcile into `docs/validations/`, run `model-reviewer`, update `state.md` and `decisions.md`. Set the Status to `done — …` only when nothing is blocking. |
+   | `close` | Claude | Run `build-pbi` steps 5–6: `reconcile.js` into `docs/validations/`, run `model-reviewer`, update `state.md` and `decisions.md`. Set the Status to `done — …` only when nothing is blocking. |
    | `done` | — | Report it as delivered. Offer: change something (edit `state.json`, then rebuild), new data (`build-html` + refresh), or publish (only on explicit request). |
 
 4. **Chain without asking** while the next phase is Claude's own (`mockup` → stop for review; `pbi` → `html` → `close`). Re-run `project-status.js` after each step and check the phase advanced. If it did not, say why and stop.

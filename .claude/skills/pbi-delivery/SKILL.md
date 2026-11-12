@@ -42,7 +42,8 @@ treat it as an illustration only, never as content to reuse.
 | `pbi-desktop.js` | `--project <folder> [--fresh] [--refresh] [--screenshot <png>] [--page <name>] [--timeout 600]` | Opens the `.pbip` in Power BI Desktop. `--fresh` closes it without saving, reopens it (reloads TMDL + PBIR from disk) and presses Home → Refresh (a changed model reopens with no data). Waits until ready, then saves a screenshot. Never runs past `--timeout`; reopens once on HOST_UNAVAILABLE; prints the text of any Desktop error dialog |
 | `project-status.js` | `--project <folder>` or `--root <repo>` | JSON: phase (material → … → done), next step and who acts, evidence, blockers, warnings. Read-only; used by `/dashboard` and `/status` |
 | `build-html.js` | `state.json` (with `calc` per measure) + `data/` | `html/<page>.html`: self-contained interactive page (slicers, cross-filter, tooltips, live titles); prints every measure unfiltered for reconciliation |
-| `lib/read-data.js` · `lib/html-engine.js` · `lib/html-ui.js` | — | Shared readers (xlsx/csv/json) · measure engine (Node + browser) · browser runtime |
+| `reconcile.js` | `--project <folder> [--page <id>] [--port <n>]` | Runs every page measure as DAX against the model open in Desktop (local Analysis Services, Desktop's own ADOMD client; Windows) and compares with `build-html.js --values`; writes `docs/validations/reconcile-<date>.md`; exit 1 on a numeric difference |
+| `lib/read-data.js` · `lib/html-engine.js` · `lib/html-ui.js` · `lib/dax-query.ps1` | — | Shared readers (xlsx/csv/json) · measure engine (Node + browser) · browser runtime · DAX runner for reconcile.js |
 
 ## Rules
 
@@ -74,8 +75,8 @@ treat it as an illustration only, never as content to reuse.
 | 5 | Empty PBIP | **User**: Desktop → *Save as → Power BI Project* into the project folder | — |
 | 6 | Model | **`build-model.js --write`** writes the TMDL from state.json (partitions from `queries.pq`, tables/types/hidden from `model-plan.json`, relationships, marked `Dim Date`, measures with `dax`), then `pbi-desktop.js --fresh` loads it. The modeling MCP is optional: use it to test DAX against the open model, then `--import` the result. `build-model.js --check` = 0 drift before commit | `references/state-schema.md` (model as code), `semantic-model-authoring` skill |
 | 7 | Pages | `build-pbir.js` → `powerbi-report-author validate` → Desktop status/reload → screenshot → review → fix state.json → repeat | `powerbi-report-cli` skill (authoring) |
-| 7b | Interactive HTML | `build-html.js` → numbers it prints = Power BI reconciliation → open/screenshot → fix state.json → repeat. Output holds real data: never commit/publish without the user's OK | `references/state-schema.md` (calc, slicers) |
-| 8 | Verify & hand over | Reconcile totals (`docs/validations/`), model review, update `state.md`/`decisions.md`, commit; publish only on request | checklist below, `references/enterprise.md` |
+| 7b | Interactive HTML | `build-html.js` → `reconcile.js` (HTML numbers = Power BI DAX) → open/screenshot → fix state.json → repeat. Output holds real data: never commit/publish without the user's OK | `references/state-schema.md` (calc, slicers) |
+| 8 | Verify & hand over | `reconcile.js` + totals vs. the source (`docs/validations/`), `build-model.js --check`, model review, update `state.md`/`decisions.md`, commit; publish only on request | checklist below, `references/enterprise.md` |
 
 Commands (phase 7):
 ```
