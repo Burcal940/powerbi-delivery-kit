@@ -6,6 +6,7 @@
 //
 // Usage: node draft-state.js --tokens <design-tokens.json> --plan <model-plan.json> --name <project>
 //                            [--theme <theme.json path for state>] [--brand "<wordmark>"] [--out <state.json>]
+//                            [--base <project folder>]  (intake paths are written relative to it)
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -17,6 +18,8 @@ const rj = (f) => JSON.parse(fs.readFileSync(f, 'utf8').replace(/^﻿/, ''));
 const tk = a.tokens ? rj(a.tokens) : { colors: {}, layout: {}, font: {} };
 const plan = a.plan ? rj(a.plan) : { tables: [], relationships: [], dateTable: null };
 const c = tk.colors || {}; const L = tk.layout || {};
+const baseDir = path.resolve(a.base || (a.out ? path.dirname(a.out) : '.'));
+const relP = (p) => (p ? path.relative(baseDir, path.resolve(p)).replace(/\\/g, '/') : null);
 
 // ---------- measures (technical aggregations only; definitions to confirm) ----------
 const facts = plan.tables.filter((t) => t.role === 'fact');
@@ -73,7 +76,8 @@ const state = {
   project: a.name,
   updated: new Date().toISOString().slice(0, 10),
   dataStatus: plan.tables.length ? 'real' : 'sample',
-  intake: { tokens: a.tokens || null, plan: a.plan || null, toConfirm: [...(tk.toConfirm || []), ...(plan.toConfirm || [])] },
+  // paths relative to the project folder (--base, default: the folder of --out) — never machine paths in state.json
+  intake: { tokens: relP(a.tokens), plan: relP(a.plan), toConfirm: [...(tk.toConfirm || []), ...(plan.toConfirm || [])] },
   designSystem: {
     name: a.brand || a.name,
     theme: a.theme || null,

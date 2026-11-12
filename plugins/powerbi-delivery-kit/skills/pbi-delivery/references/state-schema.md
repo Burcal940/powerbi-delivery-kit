@@ -131,7 +131,8 @@ whose `dax` and `calc` disagree on the aggregation (e.g. `DISTINCTCOUNT` vs `dis
   "rows": [ { "height": 140, "items": [ ... ] }, { "height": "fill", "items": [ ... ] } ]
 }
 ```
-`slicers` are drawn by `build-html.js` (sidebar) and by `build-pbir.js` as dropdowns right-aligned in
+`slicers` are drawn by `build-html.js` (in the sidebar; without a sidebar, in a panel opened by a
+"Filtros" button in the header) and by `build-pbir.js` as dropdowns right-aligned in
 the page header (label above, 170 px each); `labels` maps raw values to display text (`""` = blank, HTML only).
 In the HTML, clicking a chart category cross-filters the other visuals (click again or Esc to clear).
 
