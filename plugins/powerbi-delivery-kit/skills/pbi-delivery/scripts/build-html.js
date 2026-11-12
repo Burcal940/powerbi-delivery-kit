@@ -7,7 +7,8 @@
 //
 // Usage:
 //   node build-html.js --state <project>/state.json [--page <id>] [--out <dir>] [--data <dir>]
-//                      [--plan <model-plan.json>] [--model <name>.SemanticModel]
+//                      [--plan <model-plan.json>] [--model <name>.SemanticModel] [--values <file.json>]
+// --values writes the raw numbers it prints (per page and per disconnected-table category) for reconcile.js.
 // Defaults: --out <project>/html  --data <project>/data  --plan state.intake.plan  --model first *.SemanticModel
 //
 // Needs in state.json: model.measures[].calc for every measure a page uses (see references/state-schema.md),
@@ -79,7 +80,8 @@ for (const f of fields) {
   const r = rels.find((x) => x.toTable === t && x.fromTable === fact.name);
   if (!r) { warn.push(`No relationship from ${fact.name} to ${t} for ${f}`); continue; }
   const dimSrc = tables.find((x) => x.name === t);
-  if (/date/i.test(t) && !dimSrc) { derived[f] = { from: `${fact.name}[${r.fromColumn}]`, part: c }; fields.add(`${fact.name}[${r.fromColumn}]`); }
+  // a date table without a data file (generated in M, or only described by build-model's tmdl block) → derived from the fact date
+  if (/date/i.test(t) && (!dimSrc || (!dimSrc.source && !dimSrc.rows))) { derived[f] = { from: `${fact.name}[${r.fromColumn}]`, part: c }; fields.add(`${fact.name}[${r.fromColumn}]`); }
   else { lookups.push({ field: f, rel: r, table: dimSrc }); fields.add(`${fact.name}[${r.fromColumn}]`); }
 }
 
@@ -95,10 +97,11 @@ function loadTable(t) {
   // state source may be descriptive ("x.csv (monthly)") → fall back to the model-plan source
   let [file, sheet] = String(t.source || '').split(/\s*›\s*/);
   if (!fs.existsSync(path.join(dataDir, file || '')) && pt) [file, sheet] = String(pt.source).split(/\s*›\s*/);
-  const fp = path.join(dataDir, file || '');
-  if (!fs.existsSync(fp)) fail(`Data file not found for ${t.name}: ${fp}`);
+  if (!file) fail(`${t.name} has no data file: set "source" in state.model.tables (or "rows" for a static table)`);
+  const fp = path.join(dataDir, file);
+  if (!fs.existsSync(fp) || fs.statSync(fp).isDirectory()) fail(`Data file not found for ${t.name}: ${fp}`);
   // combine: true → every file of the same type in data/ (like a Folder.Files combine in M); columns matched by header
-  const files = t.combine ? fs.readdirSync(dataDir).filter((f) => path.extname(f).toLowerCase() === path.extname(fp).toLowerCase()).sort().map((f) => path.join(dataDir, f)) : [fp];
+  const files = t.combine ? fs.readdirSync(dataDir).filter((f) => path.extname(f).toLowerCase() === path.extname(fp).toLowerCase() && fs.statSync(path.join(dataDir, f)).isFile()).sort().map((f) => path.join(dataDir, f)) : [fp];
   const parts = files.map((f) => readFile(f, sheet));
   const header = parts[0].header;
   const rows = parts.flatMap((p) => (p === parts[0] ? p.rows : p.rows.map((r) => header.map((h) => r[p.header.findIndex((x) => norm(x) === norm(h))]))));
@@ -179,13 +182,15 @@ const read = (f) => fs.readFileSync(path.join(__dirname, 'lib', f), 'utf8');
 const outDir = A.out ? path.resolve(A.out) : path.join(proj, 'html');
 fs.mkdirSync(outDir, { recursive: true });
 
+const valuesOut = { rows: engine.all.length, pages: [] }; // --values <file>: raw numbers for reconcile.js
 for (const page of pages) {
   let rows = engine.all;
   for (const f of page.filters || []) rows = engine.filter(rows, f);
   engine.setScope(engine.all, page.filters || []);
   console.log(`\n${page.id}: ${rows.length} rows after page filters`);
+  const pv = { id: page.id, filters: page.filters || [], rows: rows.length, values: {}, groups: [] }; valuesOut.pages.push(pv);
   const seen = new Set();
-  const show = (n) => { if (!n || seen.has(n)) return; seen.add(n); console.log(`  ${n.padEnd(26)} ${engine.fmt(n, engine.m(n, rows))}`); };
+  const show = (n) => { if (!n || seen.has(n)) return; seen.add(n); const v = engine.m(n, rows); pv.values[n] = v === undefined ? null : v; console.log(`  ${n.padEnd(26)} ${engine.fmt(n, v)}`); };
   if (page.headline && page.headline.measure) show(page.headline.measure);
   JSON.stringify(page.rows, (k, v) => { if (MKEY.test(k) && k !== 'status' && typeof v === 'string') show(v); return v; });
   // per category of a disconnected table (e.g. bands): the values each chart/ring shows
@@ -193,7 +198,14 @@ for (const page of pages) {
     if (v && v.category && engine.isStatic(v.category)) {
       const ms = [v.measure, v.caption].concat((v.series || []).map((s) => s.measure)).filter(Boolean);
       const key = v.category + ms.join();
-      if (!seen.has(key)) { seen.add(key); for (const g of engine.groupBy(v.category, rows)) console.log(`  ${String(g.key).padEnd(10)} ${ms.map((n) => `${n} ${engine.fmt(n, engine.m(n, rows, g.ctx))}`).join(' · ')}`); }
+      if (!seen.has(key)) {
+        seen.add(key);
+        for (const g of engine.groupBy(v.category, rows)) {
+          const vals = {}; for (const n of ms) { const x = engine.m(n, rows, g.ctx); vals[n] = x === undefined ? null : x; }
+          pv.groups.push({ category: v.category, key: g.key, values: vals });
+          console.log(`  ${String(g.key).padEnd(10)} ${ms.map((n) => `${n} ${engine.fmt(n, vals[n])}`).join(' · ')}`);
+        }
+      }
     }
     return v;
   });
@@ -208,6 +220,7 @@ for (const page of pages) {
   console.log(`  → ${path.relative(process.cwd(), out)} (${(html.length / 1024).toFixed(0)} KB)`);
 }
 if (warn.length) { console.log('\nWarnings:'); warn.forEach((w) => console.log('  - ' + w)); }
+if (A.values) fs.writeFileSync(path.resolve(A.values), JSON.stringify(valuesOut, null, 2));
 
 // ---------- page template ----------
 function template(page, cfg, data) {

@@ -41,7 +41,10 @@ Read the `pbi-delivery` skill first; it routes to `semantic-model-authoring` (mo
    its text: fix the TMDL/M from it. Compare the screenshot with `mockups/<page>.html`, block by block, and with
    `screenshot-review.md`. Fix `state.json`, regenerate and repeat. Delete the temporary
    screenshots at the end.
-5. **Verify.** Reconcile totals into `docs/validations/`; run `model-reviewer`; enterprise →
+5. **Verify.** `node <pbi-delivery>/scripts/reconcile.js --project projects/<name>`
+   (Power BI DAX = HTML `calc`, evidence in `docs/validations/reconcile-<date>.md`; exit 1 on a
+   difference); also check the totals against the source itself (the bill, the ERP report — the
+   user names it); `build-model.js --check` = 0 drift; run `model-reviewer`; enterprise →
    `pbi-delivery/references/enterprise.md`.
 6. **Close.** Update `state.md`, log non-obvious choices in `decisions.md`, commit as
    `<name>: build <page-id> in Power BI`. Publish only if the user explicitly asks.
