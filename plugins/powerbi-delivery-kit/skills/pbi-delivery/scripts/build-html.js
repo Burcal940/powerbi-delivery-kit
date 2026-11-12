@@ -18,7 +18,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { readXlsx, parseDelimited, readJsonData } = require('./lib/read-data');
+const { readTableSource } = require('./lib/read-data');
 const { createEngine } = require('./lib/html-engine');
 
 const A = {};
@@ -88,24 +88,10 @@ for (const f of fields) {
 
 // ---------- read the data ----------
 const dataDir = A.data ? path.resolve(A.data) : path.join(proj, 'data');
-function readFile(fp, sheet) {
-  if (/\.xlsx$/i.test(fp)) { const sh = readXlsx(fp); return sh.find((s) => !sheet || s.name === sheet) || sh[0]; }
-  if (/\.json$/i.test(fp)) return readJsonData(fp);
-  return parseDelimited(fs.readFileSync(fp, 'utf8'), fp);
-}
 function loadTable(t) {
   const pt = plan.tables.find((p) => norm(p.source) === norm(t.source)) || plan.tables.find((p) => p.name === t.name);
-  // state source may be descriptive ("x.csv (monthly)") → fall back to the model-plan source
-  let [file, sheet] = String(t.source || '').split(/\s*›\s*/);
-  if (!fs.existsSync(path.join(dataDir, file || '')) && pt) [file, sheet] = String(pt.source).split(/\s*›\s*/);
-  if (!file) fail(`${t.name} has no data file: set "source" in state.model.tables (or "rows" for a static table)`);
-  const fp = path.join(dataDir, file);
-  if (!fs.existsSync(fp) || fs.statSync(fp).isDirectory()) fail(`Data file not found for ${t.name}: ${fp}`);
-  // combine: true → every file of the same type in data/ (like a Folder.Files combine in M); columns matched by header
-  const files = t.combine ? fs.readdirSync(dataDir).filter((f) => path.extname(f).toLowerCase() === path.extname(fp).toLowerCase() && fs.statSync(path.join(dataDir, f)).isFile()).sort().map((f) => path.join(dataDir, f)) : [fp];
-  const parts = files.map((f) => readFile(f, sheet));
-  const header = parts[0].header;
-  const rows = parts.flatMap((p) => (p === parts[0] ? p.rows : p.rows.map((r) => header.map((h) => r[p.header.findIndex((x) => norm(x) === norm(h))]))));
+  let src; try { src = readTableSource(dataDir, t, pt); } catch (e) { fail(e.message); }
+  const { file: fp, files, header, rows } = src;
   if (files.length > 1) console.log(`${t.name}: ${files.length} files combined (${rows.length} rows)`);
   const cache = {};
   const colOf = (name) => {

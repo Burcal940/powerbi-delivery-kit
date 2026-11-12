@@ -117,4 +117,31 @@ function readAny(p, maxRows = Infinity) {
   return out;
 }
 
-module.exports = { parseDelimited, unzip, readXlsx, readJsonData, readAny };
+// Reads the data of one state.model table from dataDir, the same way for build-html and refresh.
+// t = state table ({ name, source: "file.xlsx › Sheet", combine }), pt = its model-plan table (fallback source).
+// combine: true → every file of the same type in dataDir (like a Folder.Files combine in M); columns matched by header.
+// Returns { file, sheet, files, parts: [{ file, header, rows }], header, rows } or throws with a readable message.
+function readTableSource(dataDir, t, pt) {
+  const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  let [file, sheet] = String(t.source || '').split(/\s*›\s*/);
+  // state source may be descriptive ("x.csv (monthly)") → fall back to the model-plan source
+  if (!fs.existsSync(path.join(dataDir, file || '')) && pt) [file, sheet] = String(pt.source).split(/\s*›\s*/);
+  if (!file) throw new Error(`${t.name} has no data file: set "source" in state.model.tables (or "rows" for a static table)`);
+  const fp = path.join(dataDir, file);
+  if (!fs.existsSync(fp) || fs.statSync(fp).isDirectory()) throw new Error(`Data file not found for ${t.name}: ${fp}`);
+  const ext = path.extname(fp).toLowerCase();
+  const files = t.combine
+    ? fs.readdirSync(dataDir).filter((f) => !f.startsWith('.') && !f.startsWith('~$') && path.extname(f).toLowerCase() === ext && fs.statSync(path.join(dataDir, f)).isFile()).sort().map((f) => path.join(dataDir, f))
+    : [fp];
+  const readOne = (f) => {
+    if (/\.xlsx$/i.test(f)) { const sh = readXlsx(f); return sh.find((s) => !sheet || s.name === sheet) || sh[0]; }
+    if (/\.json$/i.test(f)) return readJsonData(f);
+    return parseDelimited(fs.readFileSync(f, 'utf8'), f);
+  };
+  const parts = files.map((f) => Object.assign({ file: f }, readOne(f)));
+  const header = parts[0].header;
+  const rows = parts.flatMap((p) => (p === parts[0] ? p.rows : p.rows.map((r) => header.map((h) => r[p.header.findIndex((x) => norm(x) === norm(h))]))));
+  return { file: fp, sheet, files, parts, header, rows };
+}
+
+module.exports = { parseDelimited, unzip, readXlsx, readJsonData, readAny, readTableSource };

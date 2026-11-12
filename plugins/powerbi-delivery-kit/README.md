@@ -15,7 +15,7 @@ Restart Claude Code, then run `/setup` once on each computer.
 ## Contents
 
 - Skills: `pbi-delivery` (method + scripts), `semantic-model-authoring` and `powerbi-report-cli` (vendored, see `common/VENDORED.md`).
-- Commands: `/build-html` · `/build-mockup` · `/build-pbi` · `/dashboard` · `/new-project` · `/setup` · `/status`.
+- Commands: `/build-html` · `/build-mockup` · `/build-pbi` · `/dashboard` · `/new-project` · `/refresh` · `/setup` · `/status`.
 - Agent: `model-reviewer`.
 - MCP: `powerbi-modeling-mcp` (via `npx`; accept its EULA once).
 
