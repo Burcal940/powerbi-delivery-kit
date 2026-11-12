@@ -32,7 +32,10 @@ Layout mirrors the plugin, so the skills' `../../common/...` links resolve (veri
 
 **MCP difference from upstream:** upstream runs `npx -y @microsoft/powerbi-modeling-mcp@latest --start`;
 the repo wraps it as `cmd /c npx ...` because `npx` is a `.cmd` shim on Windows and stdio servers
-cannot launch it directly.
+cannot launch it directly. It is also **pinned** (`@1.0.1`, not `@latest`) so a new release cannot
+break a working setup unannounced. To upgrade: `npm view @microsoft/powerbi-modeling-mcp version`,
+change the version in `.mcp.json`, restart Claude Code, run one `/build-pbi`, then rebuild the plugin.
+The same goes for the report CLI (`@microsoft/powerbi-report-authoring-cli@0.5.0` in `/setup` and README).
 
 The server requires its EULA to be accepted once per machine
 (https://go.microsoft.com/fwlink/?LinkId=2381247) — via the `accept_eula` tool or

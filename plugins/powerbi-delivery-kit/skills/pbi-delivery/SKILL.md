@@ -38,6 +38,7 @@ treat it as an illustration only, never as content to reuse.
 | `profile-data.js` | `.xlsx` `.csv` `.tsv` `.json` files/folders, or a DB schema export | `model-plan.json`, `queries.pq` (M + parameters), `data-contract.draft.md`, `profile.json` |
 | `draft-state.js` | tokens + model plan | First `state.json` (proposed KPI page, measures with PY/delta/status) |
 | `build-pbir.js` | `state.json` + `<name>.Report` | Power BI pages (PBIR) + registered theme; deterministic output |
+| `pbi-desktop.js` | `--project <folder> [--fresh] [--refresh] [--screenshot <png>] [--page <name>] [--timeout 600]` | Opens the `.pbip` in Power BI Desktop. `--fresh` closes it without saving, reopens it (reloads TMDL + PBIR from disk) and presses Home → Refresh (a changed model reopens with no data). Waits until ready, then saves a screenshot. Never runs past `--timeout`; reopens once on HOST_UNAVAILABLE; prints the text of any Desktop error dialog |
 | `project-status.js` | `--project <folder>` or `--root <repo>` | JSON: phase (material → … → done), next step and who acts, evidence, blockers, warnings. Read-only; used by `/dashboard` and `/status` |
 | `build-html.js` | `state.json` (with `calc` per measure) + `data/` | `html/<page>.html`: self-contained interactive page (slicers, cross-filter, tooltips, live titles); prints every measure unfiltered for reconciliation |
 | `lib/read-data.js` · `lib/html-engine.js` · `lib/html-ui.js` | — | Shared readers (xlsx/csv/json) · measure engine (Node + browser) · browser runtime |
@@ -96,10 +97,18 @@ reopen the `.pbip` before reloading.
 
 ## Limits
 
-- Generator item types: `kpi`, `kpiGroup`, `chart` (column/bar/line/combo), `table`, `text`.
+- Generator item types: `kpi` (+ sparkline), `kpiGroup` (+ highlight fill, grid; `panel` = dark band
+  + soft body, `panel.split`), `chart` (column/bar/line/area/combo/donut/pie, `seriesBy`, per-value
+  `colors`, `dataLabels`, `valueAxis: false`; donut `legendItems` + `center`/`centerCaption`),
+  `rings` (gauge per value, or `style: "ring"` = progress ring per value + `caption`), `table`
+  (`topN` + `topBy`, `columns[].width`), `text`; any card takes `meta` (right of the title);
+  sidebar `logo`, `navTop`, `activeFill`; page `slicers` become header dropdowns.
+- Desktop draws the donut total in the hole (`centerValue`): the generator turns it off.
 - `build-html.js` computes measures from `calc` specs, not from DAX: when a DAX measure changes, update
-  its `calc` too and re-check that both print the same numbers. One fact table; Dim Date columns are
-  derived from the fact date; other dimensions are joined through `model.relationships`.
+  its `calc` too and re-check that both print the same numbers. One fact table (optionally `combine`d
+  from several files, with Power Query columns as `derivedColumns[].calc`); Dim Date columns are
+  derived from the fact date; other dimensions are joined through `model.relationships`; disconnected
+  tables carry static `rows`. Renders kpi (+ sparkline), kpiGroup, chart (incl. donut, `seriesBy`), rings, table, text.
   Slicers, maps, matrices, what-if sliders, bookmarks and working navigation are authored with
   powerbi-report-cli on pages not owned by state.json (or by extending the generator).
 - Images: PNG is read pixel-exact (colors, sidebar, header, scale). JPG/WEBP: ask for a PNG export

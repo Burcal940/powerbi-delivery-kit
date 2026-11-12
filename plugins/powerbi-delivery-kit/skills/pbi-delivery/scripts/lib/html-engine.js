@@ -13,6 +13,7 @@
 //   { "divide": ["A", "B"], "blankAsZero"?: true }      // DIVIDE(A (+0), B)
 //   { "template": "Text {Measure} text" }               // {Measure} → formatted value
 //   { "js": "(c) => ..." }                              // c.m c.fmt c.rows c.groupBy c.filter c.max c.min c.distinct c.locale
+//                                                       // c.ctx (row of a disconnected table) c.statics c.unfiltered(table?)
 (function (root) {
   'use strict';
 
@@ -35,12 +36,23 @@
       'Month Number': (d) => +d.slice(5, 7),
       Month: (d) => MON[+d.slice(5, 7) - 1],
       'Year Month': (d) => +d.slice(0, 4) * 100 + +d.slice(5, 7),
+      'Month Year': (d) => MON[+d.slice(5, 7) - 1] + ' ' + d.slice(0, 4),
     };
+    // Text date parts sort in calendar order (their sortByColumn in the model).
+    const SORT_PART = { Month: 'Month Number', 'Month Year': 'Year Month', Quarter: 'Month Number' };
+    const sortKey = {};
     for (const k in cfg.derived || {}) {
       const d = cfg.derived[k]; const src = cols[d.from]; const f = PART[d.part];
       if (!src || !f) throw new Error('Cannot derive ' + k);
       cols[k] = src.map((v) => (v == null ? null : f(String(v))));
+      const sp = SORT_PART[d.part];
+      if (sp) { const g = PART[sp]; sortKey[k] = src.map((v) => (v == null ? null : g(String(v)))); }
     }
+    // Disconnected tables (cfg.statics = { "Table": [ {col: value, ...}, ... ] }): their rows do not filter
+    // the fact; a chart on one of their columns evaluates each measure with that row as context (c.ctx).
+    const statics = cfg.statics || {};
+    const tableOf = (field) => field.replace(/\[.*$/, '');
+    const isStatic = (field) => !!statics[tableOf(field)];
 
     const col = (k) => { const c = cols[k]; if (!c) throw new Error('Column not embedded: ' + k); return c; };
     const all = Array.from({ length: N }, (_, i) => i);
@@ -52,10 +64,17 @@
     }
     const cmp = (a, b) => (a == null ? -1 : b == null ? 1 : typeof a === 'number' && typeof b === 'number' ? a - b : String(a).localeCompare(String(b), locale));
     function groupBy(field, rows) {
-      const c = col(field); const g = new Map();
-      for (const i of rows) { const k = c[i]; if (!g.has(k)) g.set(k, []); g.get(k).push(i); }
-      return [...g.entries()].sort((a, b) => cmp(a[0], b[0])).map(([key, r]) => ({ key, rows: r }));
+      if (isStatic(field)) { // one group per static row, all fact rows, row as context (order as listed)
+        const c = field.match(/\[(.*)\]$/)[1];
+        return statics[tableOf(field)].map((r) => ({ key: r[c], rows, ctx: r }));
+      }
+      let memo = gcache.get(rows); if (!memo) gcache.set(rows, (memo = {}));
+      if (memo[field]) return memo[field];
+      const c = col(field); const g = new Map(); const sk = sortKey[field]; const ord = new Map();
+      for (const i of rows) { const k = c[i]; if (!g.has(k)) { g.set(k, []); if (sk) ord.set(k, sk[i]); } g.get(k).push(i); }
+      return (memo[field] = [...g.entries()].sort((a, b) => (sk ? cmp(ord.get(a[0]), ord.get(b[0])) : cmp(a[0], b[0]))).map(([key, r]) => ({ key, rows: r })));
     }
+    const gcache = new WeakMap(); // groupBy results per row set (row sets are never mutated)
     const distinct = (field, rows) => groupBy(field, rows).map((g) => g.key);
     const nums = (field, rows) => { const c = col(field); return rows.map((i) => c[i]).filter((v) => v != null); };
     const max = (field, rows) => { const v = nums(field, rows); return v.length ? v.reduce((a, b) => (cmp(a, b) > 0 ? a : b)) : null; };
@@ -70,7 +89,7 @@
       const d = decimals(code);
       const cur = (code.match(/^[^#0]*?([$€£])/) || [])[1];
       const s = nf({ minimumFractionDigits: d, maximumFractionDigits: d, useGrouping: /,/.test(code) }).format(Math.abs(v));
-      return (v < 0 ? '-' : '') + (cur ? cur + ' ' : '') + s;
+      return (v < 0 ? '-' : '') + (cur ? cur + (/^en/.test(locale) ? '' : ' ') : '') + s;
     }
     // Power BI column/measure format strings: literals (\x, "text"), numbers (0, #,##0, 0.0, %), dates (d dd mmm mmmm yy yyyy).
     function formatCode(v, code) {
@@ -109,7 +128,14 @@
       return /[#0]/.test(code) ? formatNumber(v, code) : formatCode(v, code);
     }
     const compiled = {};
-    function m(name, rows = all) {
+    // Filter scope of the visual being computed (set by the UI): lets a calc drop the filters of one table,
+    // like CALCULATE(..., REMOVEFILTERS/DATESBETWEEN on 'Dim Date') or ALLSELECTED.
+    let scope = { base: all, filters: [] };
+    const setScope = (base, filters) => { scope = { base, filters: filters || [] }; };
+    const unfiltered = (table) => scope.filters.filter((f) => !table || tableOf(f.field) !== table)
+      .reduce((r, f) => filter(r, f), scope.base);
+    // ctx = current row of a disconnected table (undefined = no row selected, like DAX with no filter on it).
+    function m(name, rows = all, ctx) {
       const s = specs[name];
       if (!s) throw new Error('Measure without calc: ' + name);
       if (s.agg) {
@@ -126,20 +152,20 @@
         throw new Error('Unknown agg ' + s.agg);
       }
       if (s.divide) {
-        let a = m(s.divide[0], rows); const b = m(s.divide[1], rows);
+        let a = m(s.divide[0], rows, ctx); const b = m(s.divide[1], rows, ctx);
         if (a == null && s.blankAsZero) a = 0;
         return a == null || !b ? null : a / b;
       }
-      if (s.template != null) return s.template.replace(/\{([^}]+)\}/g, (_, n) => fmt(n, m(n, rows)));
+      if (s.template != null) return s.template.replace(/\{([^}]+)\}/g, (_, n) => fmt(n, m(n, rows, ctx)));
       if (s.js) {
         const f = compiled[name] || (compiled[name] = Function('"use strict"; return (' + s.js + ');')());
-        return f({ rows, m: (n, r = rows) => m(n, r), fmt, groupBy: (fl, r = rows) => groupBy(fl, r), filter: (r, fl) => filter(r, fl),
+        return f({ rows, all, ctx, statics, unfiltered, m: (n, r = rows, cx = ctx) => m(n, r, cx), fmt, groupBy: (fl, r = rows) => groupBy(fl, r), filter: (r, fl) => filter(r, fl),
           max: (fl, r = rows) => max(fl, r), min: (fl, r = rows) => min(fl, r), distinct: (fl, r = rows) => distinct(fl, r), formatCode, locale });
       }
       throw new Error('Unknown calc for ' + name);
     }
 
-    return { all, col, filter, groupBy, distinct, max, min, m, fmt, formatCode, cmp, has: (k) => !!cols[k], hasMeasure: (n) => !!specs[n] };
+    return { all, col, filter, groupBy, distinct, max, min, m, fmt, formatCode, cmp, isStatic, setScope, statics, has: (k) => !!cols[k] || isStatic(k), hasMeasure: (n) => !!specs[n] };
   }
 
   if (typeof module === 'object' && module.exports) module.exports = { createEngine };

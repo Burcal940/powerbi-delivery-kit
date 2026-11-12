@@ -24,11 +24,18 @@ Read the `pbi-delivery` skill first; it routes to `semantic-model-authoring` (mo
    powerbi-report-author validate projects/<name>/<name>.Report
    ```
    Resolve every error and every generator warning (`Measure not found`, missing DS colors).
-4. **Preview loop** (powerbi-report-cli authoring rules): Desktop `--status`; if
-   `hasUnsavedChanges` is false → `--reload`; if true → ask the user to close Desktop **without
-   saving** and reopen the `.pbip`. Screenshot every affected page, review against
-   `screenshot-review.md` and the mockup; fix in `state.json`, regenerate, repeat. Delete the
-   temporary screenshot folder at the end.
+4. **Preview loop.** Desktop reads the PBIP folder only when it opens it, so after changing TMDL or
+   PBIR, reopen it:
+   ```
+   node <pbi-delivery>/scripts/pbi-desktop.js --project projects/<name> --fresh --screenshot <scratch>/<page>.png
+   ```
+   This opens the `.pbip` or closes it **without saving** and reopens it, waits until it is ready,
+   refreshes the data (Home → Refresh) and saves a screenshot. It gives up after `--timeout`
+   (600 s) and reopens once by itself if the preview host is lost. Warn the user first: unsaved
+   changes made by hand in Desktop are lost. If Desktop shows an error dialog, the script prints
+   its text: fix the TMDL/M from it. Compare the screenshot with `mockups/<page>.html`, block by block, and with
+   `screenshot-review.md`. Fix `state.json`, regenerate and repeat. Delete the temporary
+   screenshots at the end.
 5. **Verify.** Reconcile totals into `docs/validations/`; run `model-reviewer`; enterprise →
    `pbi-delivery/references/enterprise.md`.
 6. **Close.** Update `state.md`, log non-obvious choices in `decisions.md`, commit as

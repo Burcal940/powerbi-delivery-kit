@@ -13,7 +13,7 @@ project; default: every `projects/*/`). Report in the user's language.
    | Node.js 20+ | `node --version` | `winget install OpenJS.NodeJS.LTS` |
    | Git | `git --version` | `winget install Git.Git` |
    | Power BI Desktop | `Get-Command PBIDesktop -ErrorAction SilentlyContinue`, or the Store app `Get-AppxPackage *PowerBIDesktop*`, or `"$env:ProgramFiles\Microsoft Power BI Desktop\bin\PBIDesktop.exe"` | Microsoft Store → Power BI Desktop |
-   | Report CLI | `powerbi-report-author --version` | `npm install -g @microsoft/powerbi-report-authoring-cli@latest` |
+   | Report CLI | `powerbi-report-author --version` | `npm install -g @microsoft/powerbi-report-authoring-cli@0.5.0` (version tested with the kit) |
    | Edge (screenshots) | `"${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"` exists | Comes with Windows |
    | Modeling MCP | the `powerbi-modeling-mcp` tools are available in this session | `.mcp.json` / the plugin starts it with `npx`; accept its EULA once (`PBI_MODELING_MCP_ACCEPT_EULA=true` or its accept-EULA tool); restart Claude Code |
 

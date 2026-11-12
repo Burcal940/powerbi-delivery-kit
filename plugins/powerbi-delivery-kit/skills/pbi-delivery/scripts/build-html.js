@@ -65,11 +65,17 @@ const fields = new Set([...scanText.matchAll(fieldRe)].map((m) => `${m[1]}[${m[2
 
 const fact = tables.find((t) => t.role === 'fact') || tables[0];
 if (!fact) fail('state.model.tables has no fact table');
+// Disconnected tables with static rows (tables[].rows) → engine "statics" (no relationship, no data file)
+const statics = {};
+for (const t of tables) if (Array.isArray(t.rows)) statics[t.name] = t.rows;
+// Fact columns computed in Power Query (tables[].derivedColumns[].calc = "(r) => ...", r('<column>') = same row)
+const computed = {};
+for (const d of fact.derivedColumns || []) if (d.calc) computed[d.name] = d.calc;
 const derived = {}; // Dim Date columns derived from the fact date column
 const lookups = []; // other dimension columns joined onto fact rows
 for (const f of fields) {
   const [, t, c] = f.match(/^(.*)\[(.*)\]$/);
-  if (t === fact.name) continue;
+  if (t === fact.name || statics[t]) continue;
   const r = rels.find((x) => x.toTable === t && x.fromTable === fact.name);
   if (!r) { warn.push(`No relationship from ${fact.name} to ${t} for ${f}`); continue; }
   const dimSrc = tables.find((x) => x.name === t);
@@ -79,24 +85,41 @@ for (const f of fields) {
 
 // ---------- read the data ----------
 const dataDir = A.data ? path.resolve(A.data) : path.join(proj, 'data');
+function readFile(fp, sheet) {
+  if (/\.xlsx$/i.test(fp)) { const sh = readXlsx(fp); return sh.find((s) => !sheet || s.name === sheet) || sh[0]; }
+  if (/\.json$/i.test(fp)) return readJsonData(fp);
+  return parseDelimited(fs.readFileSync(fp, 'utf8'), fp);
+}
 function loadTable(t) {
-  const [file, sheet] = String(t.source || '').split(/\s*›\s*/);
-  const fp = path.join(dataDir, file);
-  if (!fs.existsSync(fp)) fail(`Data file not found for ${t.name}: ${fp}`);
-  let tab;
-  if (/\.xlsx$/i.test(fp)) { const sh = readXlsx(fp); tab = sh.find((s) => !sheet || s.name === sheet) || sh[0]; }
-  else if (/\.json$/i.test(fp)) tab = readJsonData(fp);
-  else tab = parseDelimited(fs.readFileSync(fp, 'utf8'), fp);
   const pt = plan.tables.find((p) => norm(p.source) === norm(t.source)) || plan.tables.find((p) => p.name === t.name);
+  // state source may be descriptive ("x.csv (monthly)") → fall back to the model-plan source
+  let [file, sheet] = String(t.source || '').split(/\s*›\s*/);
+  if (!fs.existsSync(path.join(dataDir, file || '')) && pt) [file, sheet] = String(pt.source).split(/\s*›\s*/);
+  const fp = path.join(dataDir, file || '');
+  if (!fs.existsSync(fp)) fail(`Data file not found for ${t.name}: ${fp}`);
+  // combine: true → every file of the same type in data/ (like a Folder.Files combine in M); columns matched by header
+  const files = t.combine ? fs.readdirSync(dataDir).filter((f) => path.extname(f).toLowerCase() === path.extname(fp).toLowerCase()).sort().map((f) => path.join(dataDir, f)) : [fp];
+  const parts = files.map((f) => readFile(f, sheet));
+  const header = parts[0].header;
+  const rows = parts.flatMap((p) => (p === parts[0] ? p.rows : p.rows.map((r) => header.map((h) => r[p.header.findIndex((x) => norm(x) === norm(h))]))));
+  if (files.length > 1) console.log(`${t.name}: ${files.length} files combined (${rows.length} rows)`);
+  const cache = {};
   const colOf = (name) => {
+    if (cache[name]) return cache[name];
+    if (t === fact && computed[name]) {
+      const f = Function('"use strict"; return (' + computed[name] + ');')();
+      const deps = {};
+      const vals = rows.map((_, i) => f((n) => (deps[n] || (deps[n] = colOf(n)))[i]));
+      return (cache[name] = vals.map((v) => (v === undefined || v === '' ? null : v)));
+    }
     const pc = pt && pt.columns.find((c) => c.name === name);
     const src = pc ? pc.source : name;
-    const i = tab.header.findIndex((h) => norm(h) === norm(src));
-    if (i < 0) fail(`Column ${t.name}[${name}] (source "${src}") not in ${path.basename(fp)}`);
+    const i = header.findIndex((h) => norm(h) === norm(src));
+    if (i < 0) fail(`Column ${t.name}[${name}] (source "${src}") not in ${path.basename(fp)} — add it to derivedColumns[].calc if Power Query computes it`);
     const type = pc ? pc.type : 'text';
-    return tab.rows.map((r) => convert(r[i], type));
+    return (cache[name] = rows.map((r) => convert(r[i], type)));
   };
-  return { n: tab.rows.length, colOf };
+  return { n: rows.length, colOf };
 }
 function convert(v, type) {
   if (v == null || v === '') return null;
@@ -132,7 +155,8 @@ for (const k in columns) {
 // ---------- check measures ----------
 const measures = (state.model.measures || []).map((m) => ({ name: m.name, format: m.format || (m.hidden ? '@' : undefined), calc: m.calc }));
 const usedMeasures = new Set();
-const walk = (o) => { if (Array.isArray(o)) return o.forEach(walk); if (o && typeof o === 'object') for (const k in o) { if (/^(measure|titleMeasure|reference|status)$/.test(k) && typeof o[k] === 'string') usedMeasures.add(o[k]); else walk(o[k]); } };
+const MKEY = /^(measure|titleMeasure|reference|status|center|footer|caption)$/;
+const walk = (o) => { if (Array.isArray(o)) return o.forEach(walk); if (o && typeof o === 'object') for (const k in o) { if (MKEY.test(k) && typeof o[k] === 'string') usedMeasures.add(o[k]); else walk(o[k]); } };
 walk(pages);
 // measures referenced inside other measures' calc ({Name} in templates, divide operands, c.m('Name') in js)
 for (let grew = true; grew;) {
@@ -150,7 +174,7 @@ const valueLabels = {};
 for (const p of pages) for (const s of p.slicers || []) if (s.labels) valueLabels[s.field] = s.labels;
 
 // ---------- engine check in Node: unfiltered values ----------
-const engine = createEngine({ locale, measures, derived }, data);
+const engine = createEngine({ locale, measures, derived, statics }, data);
 const read = (f) => fs.readFileSync(path.join(__dirname, 'lib', f), 'utf8');
 const outDir = A.out ? path.resolve(A.out) : path.join(proj, 'html');
 fs.mkdirSync(outDir, { recursive: true });
@@ -158,15 +182,25 @@ fs.mkdirSync(outDir, { recursive: true });
 for (const page of pages) {
   let rows = engine.all;
   for (const f of page.filters || []) rows = engine.filter(rows, f);
+  engine.setScope(engine.all, page.filters || []);
   console.log(`\n${page.id}: ${rows.length} rows after page filters`);
   const seen = new Set();
   const show = (n) => { if (!n || seen.has(n)) return; seen.add(n); console.log(`  ${n.padEnd(26)} ${engine.fmt(n, engine.m(n, rows))}`); };
   if (page.headline && page.headline.measure) show(page.headline.measure);
-  JSON.stringify(page.rows, (k, v) => { if (/^(measure|titleMeasure|reference)$/.test(k)) show(v); return v; });
+  JSON.stringify(page.rows, (k, v) => { if (MKEY.test(k) && k !== 'status' && typeof v === 'string') show(v); return v; });
+  // per category of a disconnected table (e.g. bands): the values each chart/ring shows
+  JSON.stringify(page.rows, (k, v) => {
+    if (v && v.category && engine.isStatic(v.category)) {
+      const ms = [v.measure, v.caption].concat((v.series || []).map((s) => s.measure)).filter(Boolean);
+      const key = v.category + ms.join();
+      if (!seen.has(key)) { seen.add(key); for (const g of engine.groupBy(v.category, rows)) console.log(`  ${String(g.key).padEnd(10)} ${ms.map((n) => `${n} ${engine.fmt(n, engine.m(n, rows, g.ctx))}`).join(' · ')}`); }
+    }
+    return v;
+  });
   for (const s of page.slicers || []) if (!engine.has(s.field)) warn.push(`Slicer field not embedded: ${s.field}`);
 
   const cfg = {
-    locale, colors, font: ds.font, canvas: state.canvas, shell: state.shell, page, measures, derived, colFormats, valueLabels,
+    locale, colors, font: ds.font, canvas: state.canvas, shell: state.shell, page, measures, derived, statics, colFormats, valueLabels,
   };
   const html = template(page, cfg, data);
   const out = path.join(outDir, `${page.id}.html`);
@@ -181,6 +215,9 @@ function template(page, cfg, data) {
   const rgba = (hex, a) => { const h = (hex || '#000000').replace('#', ''); return `rgba(${parseInt(h.slice(0, 2), 16)},${parseInt(h.slice(2, 4), 16)},${parseInt(h.slice(4, 6), 16)},${a})`; };
   const shadow = sh ? `0 ${sh.distance || 2}px ${sh.blur || 6}px ${rgba(sh.color || c.ink, (100 - (sh.transparency == null ? 88 : sh.transparency)) / 100)}` : 'none';
   const json = (o) => JSON.stringify(o).replace(/</g, '\\u003c');
+  // strong text on the sidebar: white on a dark sidebar, ink on a light one
+  const lum = (hex) => { const h = (hex || '#000000').replace('#', ''); return (0.299 * parseInt(h.slice(0, 2), 16) + 0.587 * parseInt(h.slice(2, 4), 16) + 0.114 * parseInt(h.slice(4, 6), 16)) / 255; };
+  const sbStrong = lum(c.sidebar) > 0.6 ? c.ink : (c.onAccent || '#fff');
   const brand = (state.shell && state.shell.sidebar && state.shell.sidebar.brand) || state.project;
   return `<!DOCTYPE html>
 <html lang="${locale.slice(0, 2)}">
@@ -192,14 +229,14 @@ function template(page, cfg, data) {
      change state.json and run the generator again. Contains real data: do not commit or publish. -->
 <style>
 :root{--page:${c.page};--frame:${c.pageFrame || c.page};--ink:${c.ink};--muted:${c.muted};--subtle:${c.subtle};--surface:${c.surface};--border:${c.border};
---accent:${c.accent};--on-accent:${c.onAccent || '#fff'};--sb:${c.sidebar};--sb-text:${c.sidebarText};--sb-sec:${c.sidebarSection};
+--accent:${c.accent};--on-accent:${c.onAccent || '#fff'};--sb:${c.sidebar};--sb-text:${c.sidebarText};--sb-sec:${c.sidebarSection};--sb-strong:${sbStrong};
 --radius:${state.canvas.radius || 12}px;--shadow:${shadow};--font:${ds.font || 'Segoe UI, sans-serif'}}
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;overflow:hidden;background:var(--frame);font-family:var(--font);color:var(--ink);-webkit-font-smoothing:antialiased}
 #stage{position:absolute;left:0;top:0;width:${state.canvas.width}px;height:${state.canvas.height}px;transform-origin:0 0;background:var(--page);overflow:hidden}
 .abs{position:absolute}.num{font-feature-settings:"tnum" 1}
 .sb{left:0;top:0;width:${state.shell.sidebar.width}px;height:100%;background:var(--sb)}
-.sb .brand{left:24px;top:20px;font-size:24px;line-height:32px;font-weight:700;color:var(--on-accent)}
+.sb .brand{left:24px;top:20px;font-size:24px;line-height:32px;font-weight:700;color:var(--sb-strong)}
 .sb .sub{left:24px;top:52px;font-size:12px;line-height:20px;color:var(--sb-text)}
 .sb .sec,.filters .sec{left:24px;font-size:11px;line-height:18px;font-weight:700;letter-spacing:.08em;color:var(--sb-sec)}
 .sb .item{left:16px;width:${state.shell.sidebar.width - 32}px;height:40px;border-radius:8px;padding:0 16px;display:flex;align-items:center;font-size:14px;color:var(--sb-text)}
@@ -207,12 +244,12 @@ html,body{height:100%;overflow:hidden;background:var(--frame);font-family:var(--
 .filters{left:24px;width:${state.shell.sidebar.width - 48}px;display:flex;flex-direction:column;gap:16px}
 .slbl{font-size:12px;line-height:18px;color:var(--sb-text);margin-bottom:6px}
 .rng{display:flex;flex-direction:column;gap:6px}
-.rng input{width:100%;height:32px;border-radius:8px;border:1px solid var(--sb-sec);background:transparent;color:var(--on-accent);font:13px var(--font);padding:0 10px;color-scheme:dark}
+.rng input{width:100%;height:32px;border-radius:8px;border:1px solid var(--sb-sec);background:transparent;color:var(--sb-strong);font:13px var(--font);padding:0 10px}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chip{border:1px solid var(--sb-sec);background:transparent;color:var(--sb-text);border-radius:999px;font:12px var(--font);padding:4px 10px;cursor:pointer}
-.chip:hover{color:var(--on-accent);border-color:var(--sb-text)}
+.chip:hover{color:var(--sb-strong);border-color:var(--sb-text)}
 .chip.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
-.clear{margin-top:4px;height:34px;border-radius:8px;border:1px solid var(--sb-sec);background:transparent;color:var(--on-accent);font:600 13px var(--font);cursor:pointer}
+.clear{margin-top:4px;height:34px;border-radius:8px;border:1px solid var(--sb-sec);background:transparent;color:var(--sb-strong);font:600 13px var(--font);cursor:pointer}
 .clear:disabled{opacity:.35;cursor:default}
 .hd{left:${state.shell.sidebar.width}px;top:0;right:0;height:${state.shell.header.height}px;background:var(--surface);border-bottom:1px solid var(--border)}
 .hd .title{left:32px;top:8px;font-size:24px;line-height:30px;font-weight:600;letter-spacing:-.01em}

@@ -31,7 +31,7 @@ repo where the skill was built.
   "theme": ".claude/skills/<client>-dashboard-design/assets/<client>-theme.json",
   "themeName": "<ThemeBaseName>",
   "font": "<Primary>, <Fallback>, sans-serif",
-  "colors": { "ink": "", "muted": "", "subtle": "", "surface": "", "border": "", "accent": "",
+  "colors": { "page": "", "ink": "", "muted": "", "subtle": "", "surface": "", "border": "", "accent": "",
               "sidebar": "", "sidebarText": "", "sidebarSection": "", "onAccent": "" }
 }
 ```
@@ -43,11 +43,15 @@ neutral placeholder.
 ```json
 "shell": {
   "sidebar": { "width": 240, "brand": "<wordmark>", "subtitle": "<report name>", "section": "MAIN MENU",
-               "items": ["Overview", "Detail", "..."] },
-  "header": { "height": 72 }
+               "items": ["Overview", "Detail", "..."],
+               "logo": "C", "navTop": 128, "activeFill": "#hex" },
+  "header": { "height": 72, "fill": "page" }
 }
 ```
 The active nav item is the page's `navLabel` (default: `title`). Navigation is visual only.
+`logo` = one letter on an accent tile before the brand; `navTop` = y of the first nav item;
+`activeFill` = active item color (default accent). `header.fill`: band color (default `surface`);
+`"page"` = no band, the title sits on the page background (use with a grey `colors.page` so white cards stand out).
 
 ## model
 
@@ -73,9 +77,18 @@ form the interactive HTML can compute. Keep it equivalent to the DAX — both mu
 | `{ "agg": "sum" \| "avg" \| "min" \| "max" \| "distinct", "column": "Fact X[Col]", "where"? }` | `SUM` / `AVERAGE` / `MIN` / `MAX` / `DISTINCTCOUNT` |
 | `{ "divide": ["A", "B"], "blankAsZero"?: true }` | `DIVIDE([A] (+ 0), [B])` |
 | `{ "template": "Sobre {Partidos Con Resultado} partidos" }` | `"Sobre " & FORMAT([...], "<measure format>") & " partidos"` |
-| `{ "js": "(c) => ..." }` | Anything else (rankings, counts of groups). `c.m(name, rows?)`, `c.groupBy(field, rows?)` → `[{key, rows}]`, `c.fmt(name\|format, v)`, `c.formatCode(v, code)`, `c.max/min/distinct(field, rows?)`, `c.filter(rows, {field, values})`, `c.rows` |
+| `{ "js": "(c) => ..." }` | Anything else (rankings, counts of groups). `c.m(name, rows?, ctx?)`, `c.groupBy(field, rows?)` → `[{key, rows}]`, `c.fmt(name\|format, v)`, `c.formatCode(v, code)`, `c.max/min/distinct(field, rows?)`, `c.filter(rows, {field, values})`, `c.rows` |
+| ↳ previous period | `c.unfiltered('Dim Date')` = the visual's rows without the date filters (`CALCULATE(..., DATESBETWEEN/REMOVEFILTERS('Dim Date'))`); `c.unfiltered()` = `ALLSELECTED` |
+| ↳ disconnected table | `c.ctx` = the current row of a static table (chart category) or `undefined` (no row in context); `c.statics['Table']` = all its rows |
 
-Empty results are `null` (= BLANK). Top-level `"locale"` (default `es-CO`) sets number/date formatting
+Empty results are `null` (= BLANK).
+
+`model.tables[]` also feeds `build-html.js`:
+- fact `combine: true` → every data file of the same type in `data/` is appended (like a `Folder.Files` combine).
+- fact `derivedColumns[]` `{ name, from, calc: "(r) => ..." }` → columns Power Query computes; `r('<column>')`
+  reads another column of the same row (model-plan name or another derived column). Keep it equal to the M.
+- `rows: [{ "<col>": value, ... }]` on a disconnected table (e.g. bands for dynamic segmentation) → its
+  columns can be chart/rings categories; each category evaluates measures with that row as `c.ctx`. Top-level `"locale"` (default `es-CO`) sets number/date formatting
 in the HTML; it should match the model culture.
 The generator checks every measure used on a page exists in the TMDL.
 `model.tables` / `model.relationships` (optional) summarize `intake/model-plan.json`.
@@ -92,14 +105,15 @@ The generator checks every measure used on a page exists in the TMDL.
   "headline": { "measure": "_Headline Overview" },   // or { "text": "static insight" }
   "tag": "FY 2026 · sample data",         // right side of header
   "filters": [{ "field": "Dim Date[Year]", "values": [2026] }],
-  "slicers": [                            // interactive HTML only (sidebar "FILTROS")
+  "slicers": [                            // HTML: sidebar "FILTROS" · Power BI: dropdowns in the header
     { "field": "Dim Date[Date]", "type": "range", "label": "Fecha" },
     { "field": "Fact Sales[Channel]", "type": "list", "label": "Canal", "labels": { "": "Sin canal" } }
   ],
   "rows": [ { "height": 140, "items": [ ... ] }, { "height": "fill", "items": [ ... ] } ]
 }
 ```
-`slicers` are drawn by `build-html.js` only; `labels` maps raw values to display text (`""` = blank).
+`slicers` are drawn by `build-html.js` (sidebar) and by `build-pbir.js` as dropdowns right-aligned in
+the page header (label above, 170 px each); `labels` maps raw values to display text (`""` = blank, HTML only).
 In the HTML, clicking a chart category cross-filters the other visuals (click again or Esc to clear).
 
 ### Layout math (same in mockup and Power BI)
@@ -112,12 +126,20 @@ In the HTML, clicking a chart category cross-filters the other visuals (click ag
 
 | type | Fields | Renders |
 |---|---|---|
-| `kpi` | `label`, `measure`, `reference?` (text measure), `status?` (hex-color measure), `valueStatus?` | Tile: label, big value, reference line colored by `status` |
-| `kpiGroup` | `items[]` of `{label, measure, status?}`, `reference?`, `status?` | One tile with 2–4 values side by side (hero card) |
+| `kpi` | `label`, `measure`, `reference?` (text measure), `status?` (hex-color measure), `valueStatus?`, `sparkline?` `{category, color?}` | Tile: label, big value, reference line colored by `status`; sparkline = bare area chart of the measure on the right half |
+| `kpiGroup` | `items[]` of `{label, measure, status?, size?}`, `label?` (tile title), `fill?` + `textColor?` (highlight tile), `columns?` (grid), `reference?`, `status?` | One tile with several values side by side, or in a `columns` grid |
+| ↳ panel | `panel` `{ band: [textMeasure, textMeasure], fill?, bodyFill?, text?, split? }`; items take `bold?`, `font?` | Dark top band (two text measures, 70/30) over a soft body holding the items in a `columns` grid; `split` = first column share (default 0.55) |
+| `rings` | `title`, `category`, `values[]` (category values in order), `measure` (0–1 share), `colors[]`, `max?` (default 1), `footer?` (text measure) | One gauge per value, filtered to it, value name underneath (substitute for progress rings) |
+| ↳ ring style | `style: "ring"`, `caption?` (text measure under the ring), `track?` (grey part color), `order?` (column that sorts the category), `innerRadius?` (default 82) | One donut per value over all values: that value colored, the rest in `track` → a progress ring; value in the hole |
 | `chart` | `visual`, `title` or `titleMeasure`, `category` (`Table[Column]`), `series[]` `{measure,label?,color?}`, `lines[]` (combo only) `{measure,label?,color?,style?}`, `sort?` `{field,direction}`, `legend?` | `columnChart`, `clusteredColumnChart`, `barChart`, `clusteredBarChart`, `lineChart`, `areaChart`, `stackedAreaChart`, `lineClusteredColumnComboChart` (lines share the column axis) |
-| ↳ chart options | `axisType` (`Categorical` shows every category, `Scalar`), `categoryWidth`, `axisFontSize`, `yMin`/`yMax` (value-axis start/end), `legendWidth` (room kept for the legend next to a measure title) | Same meaning in Power BI and HTML |
-| `table` | `title`/`titleMeasure`, `columns[]` `{field}` or `{measure,label?}`, `sort?` | `tableEx`, grow-to-fit |
+| ↳ split & color | `seriesBy` (`Table[Column]`: splits one measure into a legend), `colors` `{ "<value>": "#hex" }` on the `seriesBy` column (else the category), `sort.field` = `Table[Column]` or a measure name | — |
+| ↳ donut / pie | `visual: donutChart` or `pieChart`, `colors`, `center?` (measure shown in the hole), `labels?` (e.g. `Percent of total`), `legendPosition?` (default `Right`) | Desktop's own total in the hole (`centerValue`) is always turned off |
+| ↳ donut legend | `legendItems[]` `{label, measure?, color}`, `centerCaption?`, `centerSize?`, `innerRadius?` (default 72) | Donut on the left, hand-drawn legend (dot · name · share measure) on the right |
+| ↳ chart options | `axisType` (`Categorical` shows every category, `Scalar`), `categoryWidth`, `axisFontSize`, `yMin`/`yMax` (value-axis start/end), `legendWidth` (room kept for the legend next to a measure title), `dataLabels` (values at the bar ends; with `seriesBy`: the stack total), `valueAxis: false` (hide it) | Same meaning in Power BI and HTML |
+| `table` | `title`/`titleMeasure`, `columns[]` `{field}` or `{measure,label?}` + `width?` (px), `sort?`, `topN?` + `topBy?` (`Table[Column]` summed: keep the N largest values of the first column), `rowPadding?` (6), `fontSize?` (9), `totals?` | `tableEx`; grow-to-fit, or fixed widths with wrapping when any `width` is set |
 | `text` | `text`, `size?`, `color?`, `bold?`, `align?` | Static textbox |
+
+Any card (`kpi`, `kpiGroup`, `chart`, `rings`, `table`) takes `meta`: short muted text right of the title (e.g. `abr 2026`, `ver todos`).
 
 Rules:
 - Chart colors: main series = DS accent, comparison = DS secondary, others neutral; status colors

@@ -21,4 +21,4 @@ Restart Claude Code, then run `/setup` once on each computer.
 
 ## Requirements
 
-Node.js 20+, Power BI Desktop, Git, `npm install -g @microsoft/powerbi-report-authoring-cli@latest`.
+Node.js 20+, Power BI Desktop, Git, `npm install -g @microsoft/powerbi-report-authoring-cli@0.5.0`.

@@ -16,6 +16,8 @@ if (!a.project && !a.root) { console.error('Usage: node project-status.js --proj
 const read = (p) => { try { return fs.readFileSync(p, 'utf8'); } catch { return ''; } };
 const ls = (p) => { try { return fs.readdirSync(p, { withFileTypes: true }); } catch { return []; } };
 const IGNORE = /^(README\.md|\.gitkeep|generated)$/i;
+// is git on PATH? (one cheap check per run)
+const GIT = (() => { try { return require('child_process').spawnSync('git', ['--version'], { encoding: 'utf8', timeout: 10000 }).status === 0; } catch { return false; } })();
 
 // Phases in order. `who` = who acts next; `cmd` = the command/skill that does it.
 const PHASES = [
@@ -107,6 +109,11 @@ function status(dir) {
   if (phase === 'html' && missingCalc.length) warnings.push(`measures without calc (build-html needs them): ${missingCalc.join(', ')}`);
   if (['pbi', 'html', 'close'].includes(phase) && tbd.length) warnings.push(`measures still TBD/PROPOSED: ${tbd.join(', ')}`);
   if (phase === 'close' && !reconciled) warnings.push('no reconciliation file in docs/validations/');
+  // every project is its own git repo (the kit ignores projects/*): without it nothing is versioned
+  if (phase !== 'material') {
+    if (!GIT) warnings.push('git is not installed: nothing is versioned or pushed (winget install Git.Git, then restart VS Code)');
+    else if (!fs.existsSync(P('.git'))) warnings.push('project folder is not a git repo: run git init in it (the kit repo ignores projects/*)');
+  }
 
   return {
     project: path.basename(dir), folder: dir, statusLine, updated,
