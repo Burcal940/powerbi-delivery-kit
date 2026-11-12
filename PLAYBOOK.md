@@ -89,7 +89,7 @@ y, si se pierde la conexión con Desktop, lo reabre una vez por su cuenta.
 Lo que debes saber:
 - Si tienes cambios hechos a mano en Desktop, guárdalos antes o se pierden.
 - Si aparece una ventana de error en Desktop (TMDL, Power Query), el comando muestra su texto.
-- Para ver datos nuevos (un CSV de otro mes) sin reabrir: `pbi-desktop.js --project projects/<nombre> --refresh`.
+- Para datos nuevos (un archivo de otro mes) usa `/refresh <nombre>` (ver Fase 9).
 - No guardes desde Desktop mientras Claude edita archivos.
 
 ## Fase 8 · Cerrar
@@ -97,6 +97,16 @@ Conciliación automática (`reconcile.js`: cada medida en DAX contra el modelo a
 lo que calcula el HTML; deja la evidencia en `docs/validations/reconcile-<fecha>.md`), totales vs.
 la fuente que tú indiques, `build-model.js --check` sin diferencias, revisión del modelo, commit.
 Publicar en el servicio solo cuando lo pidas.
+
+## Fase 9 · Datos nuevos cada periodo
+Pon el archivo nuevo en `projects/<nombre>/data/` y escribe `/refresh <nombre>`. Claude:
+1. Revisa los datos contra el modelo (`refresh.js`). **Se detiene** si falta un archivo, si una
+   columna que el modelo usa no está o cambió de nombre, o si hay llaves duplicadas en una dimensión.
+   **Te pregunta** por texto en columnas numéricas o de fecha, códigos que no existen en la dimensión,
+   vacíos nuevos o menos filas que la vez anterior. Nunca limpia datos sin tu definición.
+2. Te dice cuántas filas y qué meses entraron (si no entró ningún mes nuevo, probablemente es el archivo viejo).
+3. Regenera el HTML, refresca Power BI Desktop y concilia (HTML = Power BI).
+4. Deja la evidencia en `docs/validations/refresh-<fecha>.md`, actualiza `state.md` y hace commit.
 
 ## Fuentes de datos (todas usan el mismo contrato)
 | Fuente | Qué le das a Claude | Nota |

@@ -178,6 +178,53 @@ test('build-html numbers equal sums computed directly from the CSV', () => {
   close(north.values['Total Units'], sum(nRows, 'units'), 'North Total Units');
 });
 
+test('refresh: first run logs the data; a new month is detected and flows to the HTML', () => {
+  const r1 = json(run('refresh.js', ['--project', PROJ, '--no-html']).stdout);
+  assert.equal(r1.ok, true, JSON.stringify(r1));
+  assert.deepEqual(r1.blocking, []);
+  const dates = SALES.map((r) => r.order_date).sort();
+  assert.deepEqual(r1.factRange, { from: dates[0], to: dates[dates.length - 1], months: 24 });
+  assert.ok(fs.existsSync(path.join(PROJ, 'docs', 'validations', 'refresh-log.json')));
+
+  const salesFile = path.join(PROJ, 'data', 'sales.csv');
+  const orig = fs.readFileSync(salesFile, 'utf8');
+  const added = ['X9001,2026-01-15,P01,North,3,120.5', 'X9002,2026-01-20,P02,South,1,80'];
+  fs.writeFileSync(salesFile, orig.trimEnd() + '\n' + added.join('\n') + '\n');
+  const r2 = json(run('refresh.js', ['--project', PROJ]).stdout);
+  assert.equal(r2.ok, true, JSON.stringify(r2));
+  assert.deepEqual(r2.newMonths, ['2026-01']);
+  assert.equal(r2.tables['Fact Sales'].rows, SALES.length + 2);
+  assert.deepEqual(r2.steps, [{ step: 'build-html', ok: true }]);
+  const vf = path.join(TMP, 'values-refresh.json');
+  run('build-html.js', ['--state', path.join(PROJ, 'state.json'), '--values', vf, '--page', 'overview']);
+  close(readJson(vf).pages[0].values['Total Amount'], sum(SALES, 'amount') + 200.5, 'Total Amount after refresh');
+  fs.writeFileSync(salesFile, orig);
+});
+
+test('refresh blocks a renamed column and duplicate dimension keys, and warns on dirty values', () => {
+  const salesFile = path.join(PROJ, 'data', 'sales.csv');
+  const prodFile = path.join(PROJ, 'data', 'products.csv');
+  const [sales, prods] = [fs.readFileSync(salesFile, 'utf8'), fs.readFileSync(prodFile, 'utf8')];
+  const logBefore = fs.readFileSync(path.join(PROJ, 'docs', 'validations', 'refresh-log.json'), 'utf8');
+  try {
+    fs.writeFileSync(salesFile, sales.replace('order_id,order_date,product_id,region,units,amount', 'order_id,order_date,product_id,region,units,amt'));
+    let r = run('refresh.js', ['--project', PROJ], { allowFail: true });
+    assert.equal(r.status, 1);
+    let s = json(r.stdout);
+    assert.ok(s.blocking.some((b) => /Amount \("amount"\)/.test(b)), r.stdout);
+    assert.deepEqual(s.steps, [], 'nothing runs after a blocking problem');
+    assert.equal(fs.readFileSync(path.join(PROJ, 'docs', 'validations', 'refresh-log.json'), 'utf8'), logBefore, 'log untouched');
+
+    fs.writeFileSync(salesFile, sales.trimEnd() + '\nX9100,2025-12-30,P99,North,two,50\n');
+    fs.writeFileSync(prodFile, prods.trimEnd() + '\n' + prods.trim().split(/\r?\n/)[1] + '\n');
+    r = run('refresh.js', ['--project', PROJ, '--no-html', '--no-write'], { allowFail: true });
+    s = json(r.stdout);
+    assert.ok(s.blocking.some((b) => /Dim Product\[Product Key\].*duplicate/.test(b)), r.stdout);
+    assert.ok(s.warnings.some((w) => /Fact Sales\[Units\].*"two"/.test(w)), r.stdout);
+    assert.ok(s.warnings.some((w) => /Product Key.*P99/.test(w)), r.stdout);
+  } finally { fs.writeFileSync(salesFile, sales); fs.writeFileSync(prodFile, prods); }
+});
+
 test('project-status reports a phase', () => {
   const s = json(run('project-status.js', ['--project', PROJ]).stdout);
   assert.ok(s.phase, JSON.stringify(s));

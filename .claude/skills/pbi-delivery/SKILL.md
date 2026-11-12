@@ -43,6 +43,7 @@ treat it as an illustration only, never as content to reuse.
 | `project-status.js` | `--project <folder>` or `--root <repo>` | JSON: phase (material → … → done), next step and who acts, evidence, blockers, warnings. Read-only; used by `/dashboard` and `/status` |
 | `build-html.js` | `state.json` (with `calc` per measure) + `data/` | `html/<page>.html`: self-contained interactive page (slicers, cross-filter, tooltips, live titles); prints every measure unfiltered for reconciliation |
 | `reconcile.js` | `--project <folder> [--page <id>] [--port <n>]` | Runs every page measure as DAX against the model open in Desktop (local Analysis Services, Desktop's own ADOMD client; Windows) and compares with `build-html.js --values`; writes `docs/validations/reconcile-<date>.md`; exit 1 on a numeric difference |
+| `refresh.js` | `--project <folder> [--no-html] [--desktop] [--no-write]` | New data (e.g. monthly): checks `data/` against the model (missing file/column and duplicate dimension keys block; type errors, orphan keys, new blanks, fewer rows warn), reports rows, date range and new months vs. the last refresh, rebuilds the HTML; `--desktop` also refreshes Desktop and runs `reconcile.js`. Writes `docs/validations/refresh-<date>.md` + `refresh-log.json` |
 | `lib/read-data.js` · `lib/html-engine.js` · `lib/html-ui.js` · `lib/dax-query.ps1` | — | Shared readers (xlsx/csv/json) · measure engine (Node + browser) · browser runtime · DAX runner for reconcile.js |
 
 ## Rules
@@ -77,6 +78,7 @@ treat it as an illustration only, never as content to reuse.
 | 7 | Pages | `build-pbir.js` → `powerbi-report-author validate` → Desktop status/reload → screenshot → review → fix state.json → repeat | `powerbi-report-cli` skill (authoring) |
 | 7b | Interactive HTML | `build-html.js` → `reconcile.js` (HTML numbers = Power BI DAX) → open/screenshot → fix state.json → repeat. Output holds real data: never commit/publish without the user's OK | `references/state-schema.md` (calc, slicers) |
 | 8 | Verify & hand over | `reconcile.js` + totals vs. the source (`docs/validations/`), `build-model.js --check`, model review, update `state.md`/`decisions.md`, commit; publish only on request | checklist below, `references/enterprise.md` |
+| 9 | New data (each period) | `refresh.js` (check → HTML) → `refresh.js --desktop` (Desktop refresh + reconcile) → `state.md`; command `/refresh` | `.claude/commands/refresh.md` |
 
 Commands (phase 7):
 ```
