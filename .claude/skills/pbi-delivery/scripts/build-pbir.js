@@ -548,7 +548,8 @@ function pageFilters(page) {
 const pagesJsonPath = path.join(def, 'pages', 'pages.json');
 const pagesMeta = readJson(pagesJsonPath);
 const readPage = (id) => readJson(path.join(def, 'pages', id, 'page.json'));
-const pageSchema = readPage(pagesMeta.pageOrder[0]).$schema;
+const pageSchema = pagesMeta.pageOrder.length ? readPage(pagesMeta.pageOrder[0]).$schema
+  : 'https://developer.microsoft.com/json-schemas/fabric/item/report/definition/page/2.1.0/schema.json';
 const isEmpty = (id) => { const d = path.join(def, 'pages', id, 'visuals'); return !fs.existsSync(d) || fs.readdirSync(d).length === 0; };
 const claimed = new Set();
 const results = [];

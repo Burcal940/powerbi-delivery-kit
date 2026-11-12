@@ -6,7 +6,8 @@
   'use strict';
   const CFG = window.CFG; const E = createEngine(CFG, window.DATA);
   const C = CFG.colors; const P = CFG.page; const cv = CFG.canvas;
-  const SBW = CFG.shell.sidebar.width; const HDH = CFG.shell.header.height;
+  const sb = CFG.shell.sidebar; // null: no sidebar, slicers open from a header button
+  const SBW = sb ? sb.width : 0; const HDH = CFG.shell.header.height;
   const stage = document.getElementById('stage'); const tip = document.getElementById('tip');
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
   const label = (field, v) => {
@@ -48,22 +49,29 @@
   });
 
   // ---------------- shell ----------------
-  const sb = CFG.shell.sidebar;
   const navY = (i) => 128 + i * 48;
-  const filtersTop = navY((sb.items || []).length) + 24;
-  stage.insertAdjacentHTML('beforeend', `
+  const hasSlicers = (P.slicers || []).length > 0;
+  if (sb) {
+    const filtersTop = navY((sb.items || []).length) + 24;
+    stage.insertAdjacentHTML('beforeend', `
     <div class="abs sb">
       <div class="abs brand">${esc(sb.brand)}</div>
       <div class="abs sub">${esc(sb.subtitle || '')}</div>
       <div class="abs sec" style="top:104px">${esc(sb.section || '')}</div>
       ${(sb.items || []).map((t, i) => `<div class="abs item${t === (P.navLabel || P.title) ? ' on' : ''}" style="top:${navY(i)}px">${esc(t)}</div>`).join('')}
       <div class="abs filters" style="top:${filtersTop}px" id="filters"></div>
-    </div>
+    </div>`);
+  }
+  stage.insertAdjacentHTML('beforeend', `
     <div class="abs hd">
       <div class="abs title">${esc(P.title)}</div>
       <div class="abs headline" id="headline"></div>
-      <div class="abs tag" id="tag"></div>
-    </div>`);
+      <div class="abs tag" id="tag"${!sb && hasSlicers ? ' style="right:150px"' : ''}></div>
+      ${!sb && hasSlicers ? '<button class="abs fbtn" id="fbtn">Filtros</button>' : ''}
+    </div>
+    ${sb ? '' : `<div class="abs filters pop" style="top:${HDH + 8}px" id="filters" hidden></div>`}`);
+  const fbtn = document.getElementById('fbtn');
+  if (fbtn) fbtn.addEventListener('click', () => { const p = document.getElementById('filters'); p.hidden = !p.hidden; });
   boxes.forEach((b) => stage.insertAdjacentHTML('beforeend',
     `<div class="abs tile${b.item.type === 'text' ? ' bare' : ''}" id="${b.vid}" style="left:${b.x}px;top:${b.y}px;width:${b.w}px;height:${b.h}px"></div>`));
 
@@ -89,6 +97,7 @@
     });
     h += `<button class="clear" id="clear"${active() ? '' : ' disabled'}>Limpiar filtros</button>`;
     fEl.innerHTML = h;
+    if (fbtn) { fbtn.classList.toggle('on', active() > 0); fbtn.textContent = active() ? `Filtros (${active()})` : 'Filtros'; }
   }
   fEl.addEventListener('click', (e) => {
     const t = e.target.closest('button'); if (!t) return;

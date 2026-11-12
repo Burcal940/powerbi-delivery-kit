@@ -31,9 +31,10 @@ const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
 const warn = []; const fail = (m) => { console.error('ERROR: ' + m); process.exit(1); };
 const ds = state.designSystem || {}; const colors = ds.colors || {};
 const locale = state.locale || 'es-CO';
+const SHELL = shellOf(state);
 
 // ---------- model plan (Power BI column ← source column, type) ----------
-const planPath = A.plan ? path.resolve(A.plan) : state.intake && state.intake.plan ? path.join(proj, state.intake.plan) : null;
+const planPath = A.plan ? path.resolve(A.plan) : state.intake && state.intake.plan ? path.resolve(proj, state.intake.plan) : null;
 const plan = planPath && fs.existsSync(planPath) ? JSON.parse(fs.readFileSync(planPath, 'utf8')) : { tables: [] };
 const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
 
@@ -212,7 +213,7 @@ for (const page of pages) {
   for (const s of page.slicers || []) if (!engine.has(s.field)) warn.push(`Slicer field not embedded: ${s.field}`);
 
   const cfg = {
-    locale, colors, font: ds.font, canvas: state.canvas, shell: state.shell, page, measures, derived, statics, colFormats, valueLabels,
+    locale, colors, font: ds.font, canvas: state.canvas, shell: SHELL, page, measures, derived, statics, colFormats, valueLabels,
   };
   const html = template(page, cfg, data);
   const out = path.join(outDir, `${page.id}.html`);
@@ -223,7 +224,14 @@ if (warn.length) { console.log('\nWarnings:'); warn.forEach((w) => console.log('
 if (A.values) fs.writeFileSync(path.resolve(A.values), JSON.stringify(valuesOut, null, 2));
 
 // ---------- page template ----------
+// Same shell defaults as build-pbir.js: header 72px; sidebar only when state.shell.sidebar exists
+// (without one, slicers open from a "Filters" button in the header, like Power BI's header slicers).
+function shellOf(st) {
+  const sh = st.shell || {};
+  return { header: Object.assign({ height: 72 }, sh.header), sidebar: sh.sidebar ? Object.assign({ width: 240 }, sh.sidebar) : null };
+}
 function template(page, cfg, data) {
+  const SBW = SHELL.sidebar ? SHELL.sidebar.width : 0;
   const c = colors; const sh = ds.cardShadow;
   const rgba = (hex, a) => { const h = (hex || '#000000').replace('#', ''); return `rgba(${parseInt(h.slice(0, 2), 16)},${parseInt(h.slice(2, 4), 16)},${parseInt(h.slice(4, 6), 16)},${a})`; };
   const shadow = sh ? `0 ${sh.distance || 2}px ${sh.blur || 6}px ${rgba(sh.color || c.ink, (100 - (sh.transparency == null ? 88 : sh.transparency)) / 100)}` : 'none';
@@ -248,13 +256,18 @@ function template(page, cfg, data) {
 html,body{height:100%;overflow:hidden;background:var(--frame);font-family:var(--font);color:var(--ink);-webkit-font-smoothing:antialiased}
 #stage{position:absolute;left:0;top:0;width:${state.canvas.width}px;height:${state.canvas.height}px;transform-origin:0 0;background:var(--page);overflow:hidden}
 .abs{position:absolute}.num{font-feature-settings:"tnum" 1}
-.sb{left:0;top:0;width:${state.shell.sidebar.width}px;height:100%;background:var(--sb)}
+.sb{left:0;top:0;width:${SBW}px;height:100%;background:var(--sb)}
 .sb .brand{left:24px;top:20px;font-size:24px;line-height:32px;font-weight:700;color:var(--sb-strong)}
 .sb .sub{left:24px;top:52px;font-size:12px;line-height:20px;color:var(--sb-text)}
 .sb .sec,.filters .sec{left:24px;font-size:11px;line-height:18px;font-weight:700;letter-spacing:.08em;color:var(--sb-sec)}
-.sb .item{left:16px;width:${state.shell.sidebar.width - 32}px;height:40px;border-radius:8px;padding:0 16px;display:flex;align-items:center;font-size:14px;color:var(--sb-text)}
+.sb .item{left:16px;width:${SBW - 32}px;height:40px;border-radius:8px;padding:0 16px;display:flex;align-items:center;font-size:14px;color:var(--sb-text)}
 .sb .item.on{background:var(--accent);color:var(--on-accent);font-weight:600}
-.filters{left:24px;width:${state.shell.sidebar.width - 48}px;display:flex;flex-direction:column;gap:16px}
+.filters{left:24px;width:${Math.max(SBW, 240) - 48}px;display:flex;flex-direction:column;gap:16px}
+.filters.pop{left:auto;right:32px;width:280px;padding:16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 8px 24px rgba(0,0,0,.12);z-index:5;max-height:70%;overflow:auto;
+--sb-text:var(--muted);--sb-sec:var(--border);--sb-strong:var(--ink)}
+.filters.pop[hidden]{display:none}
+.fbtn{right:32px;top:${Math.round((SHELL.header.height - 34) / 2)}px;height:34px;padding:0 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--ink);font:600 13px var(--font);cursor:pointer}
+.fbtn.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
 .slbl{font-size:12px;line-height:18px;color:var(--sb-text);margin-bottom:6px}
 .rng{display:flex;flex-direction:column;gap:6px}
 .rng input{width:100%;height:32px;border-radius:8px;border:1px solid var(--sb-sec);background:transparent;color:var(--sb-strong);font:13px var(--font);padding:0 10px}
@@ -264,7 +277,7 @@ html,body{height:100%;overflow:hidden;background:var(--frame);font-family:var(--
 .chip.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
 .clear{margin-top:4px;height:34px;border-radius:8px;border:1px solid var(--sb-sec);background:transparent;color:var(--sb-strong);font:600 13px var(--font);cursor:pointer}
 .clear:disabled{opacity:.35;cursor:default}
-.hd{left:${state.shell.sidebar.width}px;top:0;right:0;height:${state.shell.header.height}px;background:var(--surface);border-bottom:1px solid var(--border)}
+.hd{left:${SBW}px;top:0;right:0;height:${SHELL.header.height}px;background:var(--surface);border-bottom:1px solid var(--border)}
 .hd .title{left:32px;top:8px;font-size:24px;line-height:30px;font-weight:600;letter-spacing:-.01em}
 .hd .headline{left:32px;top:40px;right:420px;font-size:14px;line-height:24px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hd .tag{right:32px;top:24px;font-size:12px;line-height:24px;color:var(--subtle);text-align:right}
