@@ -220,7 +220,9 @@ const plan = {
     name: t.pbiName, source: t.kind === 'xlsx' ? `${path.basename(t.file)} › ${t.sheet}` : t.kind === 'db' ? `${t.schema}.${t.name}` : path.basename(t.file),
     role: t.role, rows: t.rowCount, primaryKey: t.primaryKey ? t.columns.find((c) => c.source === t.primaryKey).pbi : null,
     grain: t.role === 'fact' ? `TBD — confirm: one row = one ${singular(t.stem)}${t.dateCols.length ? ' (dated)' : ''}` : `one row = one ${singular(t.stem)}`,
-    columns: t.columns.map((c) => ({ name: c.pbi, source: c.source, type: c.type, hidden: isKeyName(c.source) || (t.role === 'fact' && t.measureCols.includes(c.source)), nulls: c.nulls, distinct: c.distinct })),
+    columns: t.columns.map((c) => ({ name: c.pbi, source: c.source, type: c.type, hidden: isKeyName(c.source) || (t.role === 'fact' && t.measureCols.includes(c.source)), nulls: c.nulls, distinct: c.distinct,
+      // numeric range only (no text values): lets build-html --sample generate realistic sample numbers
+      ...((c.type === 'int' || c.type === 'decimal') && typeof c.min === 'number' ? { min: c.min, max: c.max } : {}) })),
     dateColumns: t.dateCols.map((s) => t.columns.find((c) => c.source === s).pbi),
     measureCandidates: t.measureCols.map((s) => t.columns.find((c) => c.source === s).pbi),
     // decimals that live in [0,1] (or named rate/pct/%) are ratios: average them, never sum

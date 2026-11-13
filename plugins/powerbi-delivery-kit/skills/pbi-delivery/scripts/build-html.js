@@ -22,8 +22,14 @@ const { readTableSource } = require('./lib/read-data');
 const { createEngine } = require('./lib/html-engine');
 
 const A = {};
-for (let i = 2; i < process.argv.length; i += 2) A[process.argv[i].replace(/^--/, '')] = process.argv[i + 1];
-if (!A.state) { console.error('Usage: node build-html.js --state <project>/state.json [--page <id>] [--out <dir>]'); process.exit(2); }
+for (let i = 2; i < process.argv.length; i++) {
+  const k = process.argv[i].replace(/^--/, ''); const v = process.argv[i + 1];
+  if (v === undefined || v.startsWith('--')) A[k] = true; else { A[k] = v; i++; }
+}
+if (!A.state) { console.error('Usage: node build-html.js --state <project>/state.json [--page <id>] [--out <dir>] [--sample [rows]]'); process.exit(2); }
+// --sample: the MOCKUP. Same engine and layout, but the data is generated from state.json (+ the model plan's
+// types and numeric ranges) — data/ is never read, so the output holds no real data and can be committed.
+const SAMPLE = A.sample ? (A.sample === true ? 2000 : Math.max(50, +A.sample || 2000)) : 0;
 
 const statePath = path.resolve(A.state);
 const proj = path.dirname(statePath);
@@ -120,15 +126,82 @@ function convert(v, type) {
   if (type === 'bool') return /^(true|1|yes|si|sí|y)$/i.test(s);
   return s;
 }
-const F = loadTable(fact);
+// ---------- sample data (--sample): generated from state.json, never from data/ ----------
+// Text values named in state.json (page filters, calc "where", slicer labels) are always present, so filtered
+// pages are not empty; the rest are generic ("Category 1"). Numbers use the model plan's min/max when known.
+// Dates cover two years (the filtered year and the one before it, so PY measures show). Deterministic.
+const mentions = {};
+const mention = (f, vals) => { (mentions[f] = mentions[f] || new Set()); for (const v of vals || []) if (v != null) mentions[f].add(v); };
+(function scan(o) {
+  if (Array.isArray(o)) return o.forEach(scan);
+  if (!o || typeof o !== 'object') return;
+  if (typeof o.field === 'string' && Array.isArray(o.values)) mention(o.field, o.values);
+  if (typeof o.field === 'string' && o.labels) mention(o.field, Object.keys(o.labels));
+  if (o.where && typeof o.where === 'object') for (const f in o.where) mention(f, [].concat(o.where[f]));
+  for (const k in o) scan(o[k]);
+})([state.pages, state.model.measures]);
+const rngOf = (seed) => { let h = 1779033703; for (const ch of seed) h = Math.imul(h ^ ch.charCodeAt(0), 3432918353); let a = h >>> 0;
+  return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; };
+const zipf = (r, k) => { const w = Array.from({ length: k }, (_, i) => 1 / Math.pow(i + 1, 0.8)); const tot = w.reduce((a, b) => a + b, 0); let u = r() * tot; for (let i = 0; i < k; i++) { u -= w[i]; if (u <= 0) return i; } return k - 1; };
+const sampleYears = (() => {
+  const ys = [...(mentions['Dim Date[Year]'] || [])].map(Number).filter((y) => y > 1900);
+  const y1 = ys.length ? Math.max(...ys) : (plan.dateTable && +plan.dateTable.to) || +String(state.updated || '2025').slice(0, 4);
+  return [y1 - 1, y1];
+})();
+const dimSamples = {};
+function sampleTable(t) {
+  const pt = plan.tables.find((p) => norm(p.source) === norm(t.source)) || plan.tables.find((p) => p.name === t.name);
+  const isFact = t === fact;
+  const n = isFact ? SAMPLE : Math.max(3, Math.min(12, (pt && pt.rows) || 8));
+  const cache = {};
+  // without a model plan: numeric = summed/averaged in a calc or range-filtered ({ field, min/max }) in a js calc
+  const numericUse = new Set((state.model.measures || []).filter((m) => m.calc && /^(sum|avg|min|max)$/.test(m.calc.agg)).map((m) => m.calc.column)
+    .concat([...JSON.stringify(state.model.measures).matchAll(/field: '([^']+)', (?:min|max)/g)].map((x) => x[1])));
+  const colOf = (name) => {
+    if (cache[name]) return cache[name];
+    if (isFact && computed[name]) {
+      const f = Function('"use strict"; return (' + computed[name] + ');')();
+      const deps = {};
+      return (cache[name] = Array.from({ length: n }, (_, i) => f((c) => (deps[c] || (deps[c] = colOf(c)))[i])).map((v) => (v === undefined || v === '' ? null : v)));
+    }
+    const field = `${t.name}[${name}]`; const r = rngOf(field);
+    const pc = pt && pt.columns.find((c) => c.name === name);
+    const out = isFact && rels.find((x) => x.fromTable === t.name && x.fromColumn === name);
+    if (out && !/date/i.test(out.toTable)) { // foreign key → keys of the sample dimension, skewed so bars differ
+      const D = dimSamples[out.toTable] || (dimSamples[out.toTable] = sampleTable(tables.find((x) => x.name === out.toTable) || { name: out.toTable }));
+      const keys = D.colOf(out.toColumn); return (cache[name] = Array.from({ length: n }, () => keys[zipf(r, keys.length)]));
+    }
+    if (!isFact && rels.some((x) => x.toTable === t.name && x.toColumn === name)) return (cache[name] = Array.from({ length: n }, (_, i) => i + 1));
+    const type = pc ? pc.type : out || /date|fecha/i.test(name) ? 'date' : numericUse.has(field) ? 'decimal' : 'text';
+    if (type === 'date' || type === 'datetime') {
+      const t0 = Date.UTC(sampleYears[0], 0, 1), days = (Date.UTC(sampleYears[1] + 1, 0, 1) - t0) / 864e5;
+      return (cache[name] = Array.from({ length: n }, () => new Date(t0 + Math.floor(Math.pow(r(), 0.85) * days) * 864e5).toISOString().slice(0, 10)));
+    }
+    if (type === 'int' || type === 'decimal') {
+      const ratio = pt && (pt.ratioColumns || []).includes(name);
+      const lo = pc && typeof pc.min === 'number' ? pc.min : ratio ? 0 : type === 'int' ? 1 : 10;
+      const hi = pc && typeof pc.max === 'number' ? pc.max : ratio ? 1 : type === 'int' ? 20 : 1000;
+      return (cache[name] = Array.from({ length: n }, () => { const v = lo + (hi - lo) * r() * r(); return type === 'int' ? Math.round(v) : Math.round(v * 100) / 100; }));
+    }
+    if (type === 'bool') return (cache[name] = Array.from({ length: n }, () => r() < 0.5));
+    const pool = [...(mentions[field] || [])];
+    const k = Math.max(pool.length, Math.min(8, Math.max(3, (pc && pc.distinct) || 6)));
+    for (let i = 1; pool.length < k; i++) if (!pool.includes(`${name} ${i}`)) pool.push(`${name} ${i}`);
+    return (cache[name] = Array.from({ length: n }, (_, i) => (isFact ? pool[zipf(r, pool.length)] : pool[i % pool.length])));
+  };
+  return { n, colOf };
+}
+
+const F = SAMPLE ? sampleTable(fact) : loadTable(fact);
 const columns = {};
 for (const f of fields) {
   const [, t, c] = f.match(/^(.*)\[(.*)\]$/);
   if (t === fact.name) columns[f] = F.colOf(c);
 }
 for (const l of lookups) {
-  if (!l.table) { warn.push(`${l.field}: dimension table has no source in state.model.tables`); continue; }
-  const D = loadTable(l.table); const keys = D.colOf(l.rel.toColumn); const vals = D.colOf(l.field.match(/\[(.*)\]$/)[1]);
+  if (!l.table && !SAMPLE) { warn.push(`${l.field}: dimension table has no source in state.model.tables`); continue; }
+  const tn = l.rel.toTable;
+  const D = SAMPLE ? (dimSamples[tn] || (dimSamples[tn] = sampleTable(l.table || { name: tn }))) : loadTable(l.table); const keys = D.colOf(l.rel.toColumn); const vals = D.colOf(l.field.match(/\[(.*)\]$/)[1]);
   const map = new Map(keys.map((k, i) => [k, vals[i]]));
   columns[l.field] = columns[`${fact.name}[${l.rel.fromColumn}]`].map((k) => (map.has(k) ? map.get(k) : null));
 }
@@ -156,6 +229,13 @@ for (let grew = true; grew;) {
     for (const x of measures) if (!usedMeasures.has(x.name) && (txt.includes(`{${x.name}}`) || txt.includes(`"${x.name}"`) || txt.includes(`'${x.name}'`))) { usedMeasures.add(x.name); grew = true; }
   }
 }
+if (SAMPLE) { // mockup: a measure still TBD shows "TBD" (status colors stay neutral) instead of stopping
+  for (const n of usedMeasures) {
+    let m = measures.find((x) => x.name === n);
+    if (!m) measures.push((m = { name: n, format: '@' }));
+    if (!m.calc) { m.calc = /^_Status/i.test(n) ? { js: '() => null' } : { template: 'TBD' }; warn.push(`No calc yet for "${n}": shown as ${/^_Status/i.test(n) ? 'neutral' : 'TBD'} in the mockup`); }
+  }
+}
 const missing = [...usedMeasures].filter((n) => !measures.find((m) => m.name === n && m.calc));
 if (missing.length) fail('Add "calc" in state.model.measures for: ' + missing.join(', ') + '  (see references/state-schema.md → calc)');
 
@@ -166,7 +246,8 @@ for (const p of pages) for (const s of p.slicers || []) if (s.labels) valueLabel
 // ---------- engine check in Node: unfiltered values ----------
 const engine = createEngine({ locale, measures, derived, statics }, data);
 const read = (f) => fs.readFileSync(path.join(__dirname, 'lib', f), 'utf8');
-const outDir = A.out ? path.resolve(A.out) : path.join(proj, 'html');
+const outDir = A.out ? path.resolve(A.out) : path.join(proj, SAMPLE ? 'mockups' : 'html');
+const SAMPLE_LABEL = /^es/i.test(locale) ? 'Datos de ejemplo' : 'Sample data';
 fs.mkdirSync(outDir, { recursive: true });
 
 const valuesOut = { rows: engine.all.length, pages: [] }; // --values <file>: raw numbers for reconcile.js
@@ -174,7 +255,7 @@ for (const page of pages) {
   let rows = engine.all;
   for (const f of page.filters || []) rows = engine.filter(rows, f);
   engine.setScope(engine.all, page.filters || []);
-  console.log(`\n${page.id}: ${rows.length} rows after page filters`);
+  console.log(`\n${page.id}: ${rows.length} ${SAMPLE ? 'SAMPLE ' : ''}rows after page filters`);
   const pv = { id: page.id, filters: page.filters || [], rows: rows.length, values: {}, groups: [] }; valuesOut.pages.push(pv);
   const seen = new Set();
   const show = (n) => { if (!n || seen.has(n)) return; seen.add(n); const v = engine.m(n, rows); pv.values[n] = v === undefined ? null : v; console.log(`  ${n.padEnd(26)} ${engine.fmt(n, v)}`); };
@@ -198,8 +279,10 @@ for (const page of pages) {
   });
   for (const s of page.slicers || []) if (!engine.has(s.field)) warn.push(`Slicer field not embedded: ${s.field}`);
 
+  // the mockup always says it shows sample data (state-schema: pages say so while sample)
+  const pg = SAMPLE && !/sample|ejemplo/i.test(page.tag || '') ? Object.assign({}, page, { tag: [page.tag, SAMPLE_LABEL].filter(Boolean).join(' · ') }) : page;
   const cfg = {
-    locale, colors, font: ds.font, canvas: state.canvas, shell: SHELL, page, measures, derived, statics, colFormats, valueLabels,
+    locale, colors, font: ds.font, canvas: state.canvas, shell: SHELL, page: pg, measures, derived, statics, colFormats, valueLabels,
   };
   const html = template(page, cfg, data);
   const out = path.join(outDir, `${page.id}.html`);
@@ -232,8 +315,9 @@ function template(page, cfg, data) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${brand} · ${page.title}</title>
-<!-- Generated by pbi-delivery/scripts/build-html.js from state.json + real data. Do not edit by hand:
-     change state.json and run the generator again. Contains real data: do not commit or publish. -->
+${SAMPLE ? `<!-- Mockup generated by pbi-delivery/scripts/build-html.js --sample from state.json with generated sample data
+     (no real data). Do not edit by hand: change state.json and run the generator again. -->` : `<!-- Generated by pbi-delivery/scripts/build-html.js from state.json + real data. Do not edit by hand:
+     change state.json and run the generator again. Contains real data: do not commit or publish. -->`}
 <style>
 :root{--page:${c.page};--frame:${c.pageFrame || c.page};--ink:${c.ink};--muted:${c.muted};--subtle:${c.subtle};--surface:${c.surface};--border:${c.border};
 --accent:${c.accent};--on-accent:${c.onAccent || '#fff'};--sb:${c.sidebar};--sb-text:${c.sidebarText};--sb-sec:${c.sidebarSection};--sb-strong:${sbStrong};

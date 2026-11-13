@@ -57,10 +57,14 @@
     const col = (k) => { const c = cols[k]; if (!c) throw new Error('Column not embedded: ' + k); return c; };
     const all = Array.from({ length: N }, (_, i) => i);
 
+    // origin: the filters that produced a row set (page, slicers, cross-filter, chart category), so a calc can
+    // drop one table's filters and keep the rest — the DAX filter context (see unfiltered below).
+    const origin = new WeakMap();
+    const tag = (out, rows, f) => { origin.set(out, (origin.get(rows) || []).concat([f])); return out; };
     function filter(rows, f) {
       const c = col(f.field);
-      if (f.values) { const s = new Set(f.values.map((v) => (v == null ? null : v))); return rows.filter((i) => s.has(c[i])); }
-      return rows.filter((i) => c[i] != null && (f.min == null || c[i] >= f.min) && (f.max == null || c[i] <= f.max));
+      if (f.values) { const s = new Set(f.values.map((v) => (v == null ? null : v))); return tag(rows.filter((i) => s.has(c[i])), rows, f); }
+      return tag(rows.filter((i) => c[i] != null && (f.min == null || c[i] >= f.min) && (f.max == null || c[i] <= f.max)), rows, f);
     }
     const cmp = (a, b) => (a == null ? -1 : b == null ? 1 : typeof a === 'number' && typeof b === 'number' ? a - b : String(a).localeCompare(String(b), locale));
     function groupBy(field, rows) {
@@ -72,7 +76,8 @@
       if (memo[field]) return memo[field];
       const c = col(field); const g = new Map(); const sk = sortKey[field]; const ord = new Map();
       for (const i of rows) { const k = c[i]; if (!g.has(k)) { g.set(k, []); if (sk) ord.set(k, sk[i]); } g.get(k).push(i); }
-      return (memo[field] = [...g.entries()].sort((a, b) => (sk ? cmp(ord.get(a[0]), ord.get(b[0])) : cmp(a[0], b[0]))).map(([key, r]) => ({ key, rows: r })));
+      return (memo[field] = [...g.entries()].sort((a, b) => (sk ? cmp(ord.get(a[0]), ord.get(b[0])) : cmp(a[0], b[0])))
+        .map(([key, r]) => ({ key, rows: tag(r, rows, { field, values: [key] }) })));
     }
     const gcache = new WeakMap(); // groupBy results per row set (row sets are never mutated)
     const distinct = (field, rows) => groupBy(field, rows).map((g) => g.key);
@@ -132,8 +137,14 @@
     // like CALCULATE(..., REMOVEFILTERS/DATESBETWEEN on 'Dim Date') or ALLSELECTED.
     let scope = { base: all, filters: [] };
     const setScope = (base, filters) => { scope = { base, filters: filters || [] }; };
-    const unfiltered = (table) => scope.filters.filter((f) => !table || tableOf(f.field) !== table)
-      .reduce((r, f) => filter(r, f), scope.base);
+    // unfiltered(table, rows): the rows of the same filter context (page, slicers, cross-filter AND the chart
+    // category that produced `rows`) without the filters on `table`, like CALCULATE(..., REMOVEFILTERS(table)).
+    // unfiltered() with no table: the visual's scope without its category (like ALLSELECTED).
+    const unfiltered = (table, rows) => {
+      const fl = table && rows && origin.get(rows);
+      if (fl) return fl.filter((f) => tableOf(f.field) !== table).reduce((r, f) => filter(r, f), all);
+      return scope.filters.filter((f) => !table || tableOf(f.field) !== table).reduce((r, f) => filter(r, f), scope.base);
+    };
     // ctx = current row of a disconnected table (undefined = no row selected, like DAX with no filter on it).
     function m(name, rows = all, ctx) {
       const s = specs[name];
@@ -159,7 +170,7 @@
       if (s.template != null) return s.template.replace(/\{([^}]+)\}/g, (_, n) => fmt(n, m(n, rows, ctx)));
       if (s.js) {
         const f = compiled[name] || (compiled[name] = Function('"use strict"; return (' + s.js + ');')());
-        return f({ rows, all, ctx, statics, unfiltered, m: (n, r = rows, cx = ctx) => m(n, r, cx), fmt, groupBy: (fl, r = rows) => groupBy(fl, r), filter: (r, fl) => filter(r, fl),
+        return f({ rows, all, ctx, statics, unfiltered: (table) => unfiltered(table, rows), m: (n, r = rows, cx = ctx) => m(n, r, cx), fmt, groupBy: (fl, r = rows) => groupBy(fl, r), filter: (r, fl) => filter(r, fl),
           max: (fl, r = rows) => max(fl, r), min: (fl, r = rows) => min(fl, r), distinct: (fl, r = rows) => distinct(fl, r), formatCode, locale });
       }
       throw new Error('Unknown calc for ' + name);
