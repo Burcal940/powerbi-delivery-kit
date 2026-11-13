@@ -30,7 +30,7 @@ const read = (f) => fs.readFileSync(f, 'utf8').replace(/^﻿/, '');
 
 // ---------- collect ----------
 const vars = {}; const varSrc = {};
-const colorFreq = {}; const fontFreq = {}; const sizeFreq = {};
+const colorFreq = {}; const fontFreq = {}; const sizeFreq = {}; const fontUses = [];
 const jsonPalettes = [];
 const HEX = /#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b/g;
 const normHex = (h) => { h = h.toUpperCase(); return h.length === 4 ? '#' + h.slice(1).split('').map((c) => c + c).join('') : h; };
@@ -49,10 +49,8 @@ for (const f of files) {
     if (m[4] !== undefined && +m[4] < 0.9) continue; // ignore translucent shadows
     const h = rgbToHex(m[1], m[2], m[3]); colorFreq[h] = (colorFreq[h] || 0) + 1;
   }
-  for (const m of txt.matchAll(/font-family\s*:\s*([^;}"']*(?:["'][^"']+["'][^;}]*)*)/gi)) {
-    const fam = m[1].split(',')[0].replace(/["']/g, '').trim();
-    if (fam && !/^var\(/.test(fam) && !/inherit|initial/i.test(fam)) fontFreq[fam] = (fontFreq[fam] || 0) + 1;
-  }
+  // raw value kept: font-family: var(--brand-font) is resolved after every file's variables are known
+  for (const m of txt.matchAll(/font-family\s*:\s*([^;}"']*(?:["'][^"']+["'][^;}]*)*)/gi)) fontUses.push(m[1].trim());
   for (const m of txt.matchAll(/font-size\s*:\s*(\d+(?:\.\d+)?)px/gi)) sizeFreq[m[1]] = (sizeFreq[m[1]] || 0) + 1;
 }
 
@@ -149,10 +147,16 @@ if (!tokens.sidebarText && tokens.subtle) tokens.sidebarText = { value: tokens.s
 if (!tokens.sidebarSection && tokens.muted) tokens.sidebarSection = { value: tokens.muted.value, from: 'fallback: muted', confidence: 'low' };
 
 // ---------- typography ----------
-const fontVar = Object.keys(R).find((k) => /^font-(sans|family|body|base|primary)$/.test(k));
-let font = fontVar ? R[fontVar].split(',')[0].replace(/["']/g, '').trim() : null;
+// first real family of a stack: skips system aliases (-apple-system, system-ui, ui-sans-serif…) and generics
+const GENERIC = /^(-apple-system|blinkmacsystemfont|system-ui|ui-[a-z-]+|sans-serif|serif|monospace|cursive|fantasy|inherit|initial|unset)$/i;
+const firstFamily = (stack) => String(stack || '').split(',').map((s) => s.replace(/["']/g, '').trim()).find((s) => s && !GENERIC.test(s) && !/^var\(/.test(s)) || null;
+for (const u of fontUses) { const fam = firstFamily(resolve(u)); if (fam) fontFreq[fam] = (fontFreq[fam] || 0) + 1; }
+// a font variable: the usual names first, then any --font*/--ff*/--typeface* variable holding a family (not a size/weight)
+const fontVar = Object.keys(R).find((k) => /^font-(sans|family|body|base|primary)$/.test(k) && firstFamily(R[k]))
+  || Object.keys(R).find((k) => /^(font|ff|typeface)(-|$)/.test(k) && !/(size|weight|height|style|mono|code|scale|feature)/.test(k) && !/^\s*[\d.]/.test(R[k]) && firstFamily(R[k]));
+let font = fontVar ? firstFamily(R[fontVar]) : null;
 let fontFrom = fontVar ? `--${fontVar}` : null;
-if (!font || /^(ui-|system)/.test(font)) {
+if (!font) {
   const top = Object.entries(fontFreq).sort((a, b) => b[1] - a[1])[0];
   if (top) { font = top[0]; fontFrom = 'most frequent font-family'; }
 }
