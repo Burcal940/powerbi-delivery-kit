@@ -27,26 +27,39 @@ const dims = plan.tables.filter((t) => t.role === 'dimension');
 const measures = []; const kpis = [];
 // headline-like amounts first (revenue, sales, amount…), ratios last
 const PRIORITY = /(revenue|sales|amount|value|total|importe|ventas|ingreso|monto|valor|gross|net)/i;
+// Each technical measure carries its DAX (Power BI) and the same rule as `calc` (build-html / sample mockup),
+// so the mockup renders right after the intake. Business definitions stay PROPOSED until the user confirms.
+const q = (t) => `'${t.replace(/'/g, "''")}'`;
 for (const f of facts) {
   const ratios = new Set(f.ratioColumns || []);
   const cols = [...f.measureCandidates].sort((x, y) => (ratios.has(x) - ratios.has(y)) || (PRIORITY.test(y) - PRIORITY.test(x)));
   for (const col of cols) {
     const isRatio = ratios.has(col);
     const name = isRatio ? `Avg ${col}` : `Total ${col}`;
-    measures.push({ name, definition: `PROPOSED: ${isRatio ? 'AVERAGE' : 'SUM'}(${f.name}[${col}]) — confirm definition and exclusions${isRatio ? ' (ratio column: averaged, consider a weighted average)' : ''}`, format: isRatio ? '0.0%' : '#,##0' });
+    measures.push({ name, definition: `PROPOSED: ${isRatio ? 'AVERAGE' : 'SUM'}(${f.name}[${col}]) — confirm definition and exclusions${isRatio ? ' (ratio column: averaged, consider a weighted average)' : ''}`, format: isRatio ? '0.0%' : '#,##0',
+      dax: `${isRatio ? 'AVERAGE' : 'SUM'}(${q(f.name)}[${col}])`, calc: { agg: isRatio ? 'avg' : 'sum', column: `${f.name}[${col}]` } });
     kpis.push({ name, fact: f, format: isRatio ? '0.0%' : '#,##0' });
   }
   const cnt = `${f.name.replace(/^Fact /, '')} Count`;
-  measures.push({ name: cnt, definition: `PROPOSED: COUNTROWS(${f.name}) — confirm what is counted`, format: '#,##0' });
+  measures.push({ name: cnt, definition: `PROPOSED: COUNTROWS(${f.name}) — confirm what is counted`, format: '#,##0', dax: `COUNTROWS(${q(f.name)})`, calc: { agg: 'count' } });
   kpis.push({ name: cnt, fact: f });
 }
 const chosen = kpis.slice(0, 4);
 const hasDate = !!(plan.dateTable && facts.some((f) => f.dateColumns.length));
+const dateName = (plan.dateTable && plan.dateTable.name) || 'Dim Date';
 for (const k of chosen) {
-  if (hasDate) {
-    measures.push({ name: `${k.name} PY`, definition: `${k.name} for the same period of the previous year`, format: k.format || '#,##0' });
-    measures.push({ name: `${k.name} YoY %`, definition: `(${k.name} − PY) / PY`, format: '+0.0%;-0.0%;0.0%' });
-    measures.push({ name: `_Delta Label ${k.name}`, definition: "text: '▲ x.x% vs PY' / '▼ …' / '—' when no PY", hidden: true });
+  if (hasDate && k.fact.dateColumns.length) {
+    const d = `${k.fact.name}[${k.fact.dateColumns[0]}]`; const js = (s) => JSON.stringify(s).slice(1, -1).replace(/'/g, "\\'");
+    // same months one year earlier, keeping every non-date filter (region, chart category…) = SAMEPERIODLASTYEAR for whole months
+    measures.push({ name: `${k.name} PY`, definition: `${k.name} for the same period of the previous year`, format: k.format || '#,##0',
+      dax: `CALCULATE([${k.name}], SAMEPERIODLASTYEAR(${q(dateName)}[Date]))`,
+      calc: { js: `(c) => { const d = '${js(d)}'; const ym = (v) => +String(v).slice(0, 4) * 100 + +String(v).slice(5, 7); const want = new Set(c.distinct(d).filter((v) => v != null).map((v) => ym(v) - 100)); if (!want.size) return null; const base = c.unfiltered('${js(dateName)}'); return c.m('${js(k.name)}', c.filter(base, { field: d, values: c.distinct(d, base).filter((v) => v != null && want.has(ym(v))) })); }` } });
+    measures.push({ name: `${k.name} YoY %`, definition: `(${k.name} − PY) / PY`, format: '+0.0%;-0.0%;0.0%',
+      dax: `DIVIDE([${k.name}] - [${k.name} PY], [${k.name} PY])`,
+      calc: { js: `(c) => { const a = c.m('${js(k.name)}'); const b = c.m('${js(k.name)} PY'); return b ? ((a || 0) - b) / b : null; }` } });
+    measures.push({ name: `_Delta Label ${k.name}`, definition: "text: '▲ x.x% vs PY' / '▼ …' / '—' when no PY", hidden: true,
+      dax: `VAR d = [${k.name} YoY %] RETURN IF(ISBLANK(d), "—", IF(d >= 0, "▲ ", "▼ ") & FORMAT(ABS(d), "0.0%") & " vs PY")`,
+      calc: { js: `(c) => { const v = c.m('${js(k.name)} YoY %'); return v == null ? '—' : (v >= 0 ? '▲ ' : '▼ ') + c.fmt('0.0%', Math.abs(v)) + ' vs PY'; }` } });
   }
   measures.push({ name: `_Status Color ${k.name}`, definition: 'TBD — ask: polarity (is up good?) → good/bad/neutral hex from the design tokens', hidden: true });
 }
@@ -55,13 +68,13 @@ measures.push({ name: '_Headline Overview', definition: 'TBD — insight sentenc
 // ---------- page proposal ----------
 const kpiItems = chosen.map((k) => ({
   type: 'kpi', label: k.name.replace(/^(Total|Avg) /, ''), measure: k.name,
-  ...(hasDate ? { reference: `_Delta Label ${k.name}` } : {}), status: `_Status Color ${k.name}`,
+  ...(hasDate && k.fact.dateColumns.length ? { reference: `_Delta Label ${k.name}` } : {}), status: `_Status Color ${k.name}`,
 }));
 const firstDim = dims.find((d) => d.attributes.length);
 const rows = [];
 if (kpiItems.length) rows.push({ height: 140, items: kpiItems });
 const charts = [];
-if (chosen[0] && hasDate) charts.push({ type: 'chart', visual: 'lineChart', title: `TBD — insight: ${chosen[0].name} trend vs PY`, category: 'Dim Date[Month]',
+if (chosen[0] && hasDate && chosen[0].fact.dateColumns.length) charts.push({ type: 'chart', visual: 'lineChart', title: `TBD — insight: ${chosen[0].name} trend vs PY`, category: 'Dim Date[Month]',
   series: [{ measure: chosen[0].name, color: c.accent }, { measure: `${chosen[0].name} PY`, label: 'PY', color: c.secondary || c.subtle }] });
 if (chosen[0] && firstDim) charts.push({ type: 'chart', visual: 'clusteredBarChart', title: `TBD — insight: ${chosen[0].name} by ${firstDim.attributes[0]}`,
   category: `${firstDim.name}[${firstDim.attributes[0]}]`, series: [{ measure: chosen[0].name, color: c.accent }],

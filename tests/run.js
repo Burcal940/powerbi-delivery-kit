@@ -178,6 +178,68 @@ test('build-html numbers equal sums computed directly from the CSV', () => {
   close(north.values['Total Units'], sum(nRows, 'units'), 'North Total Units');
 });
 
+test('build-html --sample writes the mockup from state.json alone (no real data), deterministically', () => {
+  const out = path.join(TMP, 'mockup-a'); const vf = path.join(TMP, 'values-sample.json');
+  // --data points nowhere: the mockup must never read data/
+  run('build-html.js', ['--state', path.join(PROJ, 'state.json'), '--sample', '--data', path.join(TMP, 'no-such-dir'), '--out', out, '--values', vf]);
+  const v = readJson(vf);
+  const ov = v.pages.find((p) => p.id === 'overview'); const north = v.pages.find((p) => p.id === 'north');
+  assert.ok(north.rows > 0, 'values named in state.json (page filter North) exist in the sample');
+  assert.ok(ov.values['Widget Amount'] > 0, 'values named in a calc "where" (Widgets) exist in the sample');
+  assert.ok(ov.groups.some((g) => g.category === 'Order Size[Band]' && g.values['Band Orders'] > 0));
+  const html = fs.readFileSync(path.join(out, 'overview.html'), 'utf8');
+  assert.match(html, /Sample data/, 'the page says it shows sample data');
+  for (const p of Object.values(PRODUCTS)) assert.ok(!html.includes(p.product_name), `real product name leaked: ${p.product_name}`);
+  for (const r of SALES.slice(0, 50)) assert.ok(!html.includes(r.order_id), `real order id leaked: ${r.order_id}`);
+  const out2 = path.join(TMP, 'mockup-b');
+  run('build-html.js', ['--state', path.join(PROJ, 'state.json'), '--sample', '--data', path.join(TMP, 'no-such-dir'), '--out', out2]);
+  assert.deepEqual(snapshot(out2), snapshot(out), 'sample mockup must be deterministic');
+});
+
+test('a fresh intake renders as a mockup; its PY measures match SAMEPERIODLASTYEAR on real data', () => {
+  const FRESH = path.join(TMP, 'projects', 'fresh');
+  copy(path.join(FIX, 'demo-sales'), FRESH);
+  fs.rmSync(path.join(FRESH, 'state.json'));
+  run('intake.js', ['--project', FRESH, '--brand', 'Demo']);
+  const st = path.join(FRESH, 'state.json');
+  // straight from the intake, no hand edits: the mockup renders (TBD measures shown as TBD)
+  run('build-html.js', ['--state', st, '--sample']);
+  assert.ok(fs.existsSync(path.join(FRESH, 'mockups', 'overview.html')));
+
+  const s = readJson(st);
+  const py = s.model.measures.find((m) => m.name === 'Total Amount PY');
+  assert.ok(py && py.calc && /SAMEPERIODLASTYEAR/.test(py.dax), 'draft proposes PY with dax + calc');
+  // real data: fill only the business TBDs (status colors, headline), then compare with the CSV
+  for (const m of s.model.measures) if (!m.calc) m.calc = { template: '' };
+  fs.writeFileSync(st, JSON.stringify(s, null, 2));
+  const vf = path.join(TMP, 'values-fresh.json');
+  run('build-html.js', ['--state', st, '--values', vf]);
+  const year = s.pages[0].filters[0].values[0];
+  const ym = (d) => d.slice(0, 7);
+  const cur = SALES.filter((r) => +r.order_date.slice(0, 4) === year);
+  const months = new Set(cur.map((r) => `${year - 1}${ym(r.order_date).slice(4)}`));
+  const prev = SALES.filter((r) => months.has(ym(r.order_date)));
+  const vals = readJson(vf).pages[0].values;
+  close(vals['Total Amount'], sum(cur, 'amount'), 'Total Amount (page year)');
+  close(vals['Total Amount PY'], sum(prev, 'amount'), 'Total Amount PY');
+
+  // the same calc per chart category (month, region): the category filter is kept, only the date shifts
+  const { createEngine } = require(path.join(SCRIPTS, 'lib', 'html-engine.js'));
+  const col = (f) => SALES.map((r) => (f === 'amount' ? +r.amount : r[f]));
+  const E = createEngine({ locale: 'en-US', measures: s.model.measures, derived: {
+    'Dim Date[Year]': { from: 'Fact Sales[Order Date]', part: 'Year' }, 'Dim Date[Month Number]': { from: 'Fact Sales[Order Date]', part: 'Month Number' } } },
+  { n: SALES.length, cols: { 'Fact Sales[Order Date]': { vals: col('order_date') }, 'Fact Sales[Amount]': { vals: col('amount') }, 'Fact Sales[Region]': { vals: col('region') } } });
+  const page = E.filter(E.all, { field: 'Dim Date[Year]', values: [year] });
+  E.setScope(page, []);
+  for (const cat of ['Dim Date[Month Number]', 'Fact Sales[Region]']) {
+    for (const g of E.groupBy(cat, page)) {
+      const inCat = (r) => (cat === 'Fact Sales[Region]' ? r.region === g.key : +r.order_date.slice(5, 7) === g.key);
+      const ms = new Set(cur.filter(inCat).map((r) => `${year - 1}${ym(r.order_date).slice(4)}`));
+      close(E.m('Total Amount PY', g.rows), sum(SALES.filter((r) => inCat(r) && ms.has(ym(r.order_date))), 'amount'), `PY ${cat} = ${g.key}`);
+    }
+  }
+});
+
 test('refresh: first run logs the data; a new month is detected and flows to the HTML', () => {
   const r1 = json(run('refresh.js', ['--project', PROJ, '--no-html']).stdout);
   assert.equal(r1.ok, true, JSON.stringify(r1));

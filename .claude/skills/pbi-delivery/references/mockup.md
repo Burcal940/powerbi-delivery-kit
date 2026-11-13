@@ -1,18 +1,32 @@
 # Mockup (phase 4)
 
-Produce one self-contained HTML per page at `projects/<name>/mockups/<page-id>.html`, rendered
-from `state.json` with the client design system. Its job is fast visual iteration with the user;
-it must stay translatable 1:1 to Power BI.
+One HTML per page at `projects/<name>/mockups/<page-id>.html`, **generated** from `state.json`:
+
+```
+node <skill>/scripts/build-html.js --state <project>/state.json --sample [rows] [--page <id>]
+```
+
+It is the same generator as the interactive HTML of phase 7b (same layout math as `build-pbir.js`,
+same measure engine, slicers, cross-filter and tooltips) with **sample data** instead of `data/`.
+So mockup, HTML and Power BI page share one layout, and an approved mockup is already the final page.
+
+## How the sample data is made
+- Only from `state.json` and the model plan (`intake.plan`): column types, numeric min/max, distinct counts.
+  `data/` is never read, so the mockup holds no real data and can be committed or shared.
+- Text values named in `state.json` (page `filters`, calc `where`, slicer `labels`) are always present,
+  so filtered pages are not empty. Other values are generic (`Category 1`, `Category 2`…).
+- Dates cover two years: the year of the page filter (or the plan's last year) and the one before it,
+  so PY / YoY measures show.
+- Deterministic: same `state.json` → same file. `--sample 5000` changes the fact row count (default 2000).
+- The header tag adds "Datos de ejemplo" / "Sample data" (by `locale`).
+- A measure without `calc` (definition still TBD) shows `TBD`; `_Status…` measures stay neutral.
+  The warnings list them: they are the questions still open.
 
 ## Steps
-1. Read the client design system (tokens, components, README / design-system skill) and the page
-   in `state.json`. Use DS tokens by name (`var(--…)`); never new hex values or fonts.
-2. Fixed canvas from `state.canvas` (default 1920×1080), no scroll, same shell and the same layout
-   math as `references/state-schema.md` so positions match the Power BI page.
-3. Numbers come from `sampleData` (or a real extract) and must equal what the model will return —
-   compute them in JS from the same rows, don't type them.
-4. Only elements listed ✅/⚠️ in `references/feasibility.md`. Put ❌ ideas in `pbiNotFeasible`.
-5. Deliver: one line naming the page and layout, then the file. If the user wants to share it,
+1. Make the page right in `state.json` (layout, titles, measures, slicers). Use DS tokens only.
+2. Run the command, screenshot, review. Fix `state.json`, never the HTML. Repeat.
+3. Only elements listed ✅/⚠️ in `references/feasibility.md`. Put ❌ ideas in `pbiNotFeasible`.
+4. Deliver: one line naming the page and layout, then the file. If the user wants to share it,
    publish it as an artifact.
 
 ## Content rules (all clients)
@@ -26,5 +40,5 @@ it must stay translatable 1:1 to Power BI.
 - Missing value = "—", never 0. Units per the DS (e.g. `1,275 M USD`, `256.2K`, `87%`).
 
 ## Iterating
-Change `state.json` first, then the single affected HTML (micro-edits; never regenerate a whole
-page for a small change). Once approved, phases 5–7 build the same page in Power BI.
+Change `state.json` first, then re-run the command (it is fast and deterministic). Once approved,
+phases 5–7 build the same page in Power BI and the same HTML with real data.

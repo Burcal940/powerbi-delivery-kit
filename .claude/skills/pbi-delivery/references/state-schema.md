@@ -78,7 +78,7 @@ form the interactive HTML can compute. Keep it equivalent to the DAX — both mu
 | `{ "divide": ["A", "B"], "blankAsZero"?: true }` | `DIVIDE([A] (+ 0), [B])` |
 | `{ "template": "Sobre {Partidos Con Resultado} partidos" }` | `"Sobre " & FORMAT([...], "<measure format>") & " partidos"` |
 | `{ "js": "(c) => ..." }` | Anything else (rankings, counts of groups). `c.m(name, rows?, ctx?)`, `c.groupBy(field, rows?)` → `[{key, rows}]`, `c.fmt(name\|format, v)`, `c.formatCode(v, code)`, `c.max/min/distinct(field, rows?)`, `c.filter(rows, {field, values})`, `c.rows` |
-| ↳ previous period | `c.unfiltered('Dim Date')` = the visual's rows without the date filters (`CALCULATE(..., DATESBETWEEN/REMOVEFILTERS('Dim Date'))`); `c.unfiltered()` = `ALLSELECTED` |
+| ↳ previous period | `c.unfiltered('Dim Date')` = the same filter context (page, slicers, cross-filter and the chart category) without the date filters (`CALCULATE(..., DATESBETWEEN/REMOVEFILTERS('Dim Date'))`); `c.unfiltered()` = `ALLSELECTED` |
 | ↳ disconnected table | `c.ctx` = the current row of a static table (chart category) or `undefined` (no row in context); `c.statics['Table']` = all its rows |
 
 Empty results are `null` (= BLANK).

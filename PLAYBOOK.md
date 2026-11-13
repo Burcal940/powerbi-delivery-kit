@@ -57,6 +57,14 @@ cualquier elemento del diseño que Power BI no puede hacer. Lo que falte queda c
 (es más rápido que en Power BI). Solo elementos que existen en Power BI; lo que no, queda anotado
 en `pbiNotFeasible` con su reemplazo.
 
+El mockup lo genera el mismo motor del HTML interactivo (Fase 7b), con **datos de ejemplo**:
+- mismo layout, filtros, cruces entre gráficas y tooltips que tendrá la versión final;
+- nunca lee `data/`, así que no lleva datos reales y se puede subir a git o compartir;
+- el encabezado dice "Datos de ejemplo";
+- las medidas cuya definición falta aparecen como `TBD`.
+
+Cuando lo apruebas, el HTML final y Power BI salen del mismo `state.json`.
+
 ## Fase 5 · PBIP vacío (tu único paso manual)
 Power BI Desktop → informe en blanco → *Archivo → Guardar como → Power BI Project (.pbip)* →
 `projects/<nombre>/`. Mientras Claude trabaja, **no guardes desde Desktop**.
