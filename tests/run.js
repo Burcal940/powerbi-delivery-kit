@@ -85,6 +85,26 @@ test('intake derives tokens, theme, model plan and a draft state with relative p
   assert.ok(pq.some((l) => l.includes('File.Contents(SourcePath & ')), 'queries read through SourcePath');
 });
 
+test('extract-design reads the font behind var() and skips system font aliases', () => {
+  const dir = path.join(TMP, 'fonts');
+  fs.mkdirSync(dir, { recursive: true });
+  const cases = [
+    // only a usage through a variable with a non-standard name
+    [':root{--brand-typeface-x:1px;--ff-ui:"Inter Tight", -apple-system, sans-serif}\nbody{font-family:var(--ff-ui)}\nh1{font-size:24px}', 'Inter Tight'],
+    // system alias first in the stack, the real family after it
+    [':root{--font-sans: system-ui, "Plus Jakarta Sans", sans-serif}', 'Plus Jakarta Sans'],
+    // no variable: most frequent literal usage, aliases skipped
+    ['body{font-family:-apple-system, BlinkMacSystemFont, "Manrope", sans-serif}p{font-family:Manrope}', 'Manrope'],
+  ];
+  cases.forEach(([css, want], i) => {
+    const f = path.join(dir, `t${i}.css`); const o = path.join(dir, `t${i}.json`);
+    fs.writeFileSync(f, css);
+    run('extract-design.js', ['--in', f, '--out', o]);
+    const t = readJson(o);
+    assert.equal(t.font.family, want, `case ${i}: ${JSON.stringify(t.font)}`);
+  });
+});
+
 test('build-model writes the model from state.json, idempotently', () => {
   copy(path.join(FIX, 'empty-pbip'), PROJ);
   const w = json(run('build-model.js', ['--project', PROJ, '--write']).stdout);
